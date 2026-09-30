@@ -7,16 +7,18 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <aside class="toolbar">
-        <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
-        <button class="toolButton" data-tool="eraser" title="Eraser (E)">Eraser</button>
-        <input type="color" id="colorPicker" value="#3a86ff" title="Draw color">
-    </aside>
-    <main class="workspace" id="workspace">
-        <canvas id="editorCanvas"></canvas>
-    </main>
+    <div class="editorArea">
+        <aside class="toolbar">
+            <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
+            <button class="toolButton" data-tool="eraser" title="Eraser (E)">Eraser</button>
+            <input type="color" id="colorPicker" value="#3a86ff" title="Draw color">
+        </aside>
+        <main class="workspace" id="workspace">
+            <canvas id="editorCanvas"></canvas>
+        </main>
+    </div>
     <footer class="statusBar">
-        <span id="cursorInfo">x: -  y: -</span>
+        <span id="cursorInfo">x: - y: -</span>
         <span id="sizeInfo"></span>
         <span id="zoomInfo"></span>
         <span id="toolInfo"></span>

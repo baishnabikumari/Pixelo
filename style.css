@@ -78,3 +78,9 @@ body{
     background: none;
     cursor: pointer;
 }
+
+.editorArea{
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}

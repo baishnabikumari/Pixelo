@@ -41,7 +41,7 @@ function isInsideCanvas(x, y){
 
 function setPixel(x, y, color){
     if(!isInsideCanvas(x, y)) return;
-    pixelGridp[y][x] = color;
+    pixelGrid[y][x] = color;
 }
 
 function getLinePoints(from, to){
@@ -89,7 +89,7 @@ function startStroke(pixel){
     stroke = {
         snapshot: cloneGrid(pixelGrid),
         path: [pixel],
-        color: activeTool = "eraser" ? null : paintColor,
+        color: activeTool === "eraser" ? null : paintColor,
         isPixelPerfect: activeTool === "pencil",
     };
     repaintStroke();
@@ -161,13 +161,12 @@ function resizeCanvasToWorkspace(){
     render();
 }
 
-function screenToPixel(screenX, screenY){
+function getPixelUnderPointer(screenX, screenY){
     const zoom = getZoom();
-    const pixelX = Math.floor((screenX - view.offsetX) / zoom);
-    const pixelY = Math.floor((screenY - view.offsetY) / zoom);
-    const isInside = 
-        pixelX >= 0 && pixelX < CANVAS_WIDTH && pixelY >= 0 && pixelY < CANVAS_HEIGHT;
-    return isInside ? { x: pixelX, y: pixelY } : null;
+    return{
+        x: Math.floor((screenX - view.offsetX) / zoom),
+        y: Math.floor((screenY - view.offsetY) / zoom),
+    };
 }
 
 function changeZoom(direction, anchorX, anchorY){
@@ -182,12 +181,13 @@ function changeZoom(direction, anchorX, anchorY){
     const newZoom = getZoom();
     view.offsetX = Math.round(anchorX - imageX * newZoom);
     view.offsetY = Math.round(anchorY - imageY * newZoom);
+    render();
 }
 
 function drawCheckerboard(zoom){
     for(let y = 0; y < CANVAS_HEIGHT; y++){
         for(let x = 0; x < CANVAS_WIDTH; x++){
-            context.fillstyle = (x + y) % 2 === 0 ? CHECKER_LIGHT : CHECKER_DARK;
+            context.fillStyle = (x + y) % 2 === 0 ? CHECKER_LIGHT : CHECKER_DARK;
             context.fillRect(view.offsetX + x * zoom, view.offsetY + y * zoom, zoom, zoom);
         }
     }
@@ -198,7 +198,7 @@ function drawPixels(zoom){
         for(let x = 0; x < CANVAS_WIDTH; x++){
             const color = pixelGrid[y][x];
             if(color === null) continue;
-            context.fillstyle = color;
+            context.fillStyle = color;
             context.fillRect(view.offsetX + x * zoom, view.offsetY + y * zoom, zoom, zoom);
         }
     }
@@ -258,7 +258,7 @@ function render(){
     updateStatusBar();
 }
 
-function updateStatusBar(){
+function updateCursorStyle(){
     if(isPanning) editorCanvas.style.cursor = "grabbing";
     else if (isSpaceHeld) editorCanvas.style.cursor = "grab";
     else editorCanvas.style.cursor = "crosshair";
@@ -269,7 +269,7 @@ function startPanning(event){
     lastPointerX = event.clientX;
     lastPointerY = event.clientY;
     editorCanvas.setPointerCapture(event.pointerId);
-    udpateCursorStyle();
+    updateCursorStyle();
 }
 
 editorCanvas.addEventListener("pointerdown", (event) => {
@@ -278,6 +278,14 @@ editorCanvas.addEventListener("pointerdown", (event) => {
     if(isMiddleButton || isSpaceDrag){
         event.preventDefault();
         startPanning(event);
+        return;
+    }
+    if(event.button === 0){
+        const bounds = editorCanvas.getBoundingClientRect();
+        const pixel = getPixelUnderPointer(event.clientX - bounds.left, event.clientY - bounds.top);
+        editorCanvas.setPointerCapture(event.pointerId);
+        startStroke(pixel);
+        render();
     }
 });
 
@@ -285,20 +293,25 @@ editorCanvas.addEventListener("pointermove", (event) => {
     const bounds = editorCanvas.getBoundingClientRect();
     const screenX = event.clientX - bounds.left;
     const screenY = event.clientY - bounds.top;
+    const pixel = getPixelUnderPointer(screenX, screenY);
 
     if(isPanning){
         view.offsetX += event.clientX - lastPointerX;
         view.offsetY += event.clientY - lastPointerY;
         lastPointerX = event.clientX;
         lastPointerY = event.clientY;
+    } else if(stroke){
+        extendStroke(pixel)
     }
-    hoveredPixel = screenToPixel(screenX, screenY);
+    hoveredPixel = isInsideCanvas(pixel.x, pixel.y) ? pixel : null;
     render();
 });
 
 editorCanvas.addEventListener("pointerup", () => {
     isPanning = false;
-    udpateCursorStyle();
+    stroke = null;
+    updateCursorStyle();
+    render();
 });
 
 editorCanvas.addEventListener("pointerleave", () => {
@@ -312,7 +325,7 @@ editorCanvas.addEventListener(
         event.preventDefault();
         const bounds = editorCanvas.getBoundingClientRect();
         const direction = event.deltaY < 0 ? 1 : -1;
-        changeZoom(direction, event.clientX - bounds.left, event.clientX, event.clientY - bounds.top);
+        changeZoom(direction, event.clientX - bounds.left, event.clientY - bounds.top);
     },
     { passive: false }
 );
@@ -321,18 +334,20 @@ window.addEventListener("keydown", (event) => {
     if(event.code === "Space"){
         event.preventDefault();
         isSpaceHeld = true;
-        udpateCursorStyle();
+        updateCursorStyle();
     }
     if(event.code === "Digit0"){
         centerCanvasInView();
         render();
     }
+    if(event.code === "KeyB") selectTool("pencil");
+    if(event.code === "KeyE") selectTool("eraser");
 });
 
 window.addEventListener("keyup", (event) => {
     if(event.code === "Space"){
         isSpaceHeld = false;
-        udpateCursorStyle();
+        updateCursorStyle();
     }
 });
 
@@ -340,6 +355,15 @@ window.addEventListener("resize", () => {
     resizeCanvasToWorkspace();
 });
 
+toolButtons.forEach((button) => {
+    button.addEventListener("click", () => selectTool(button.dataset.tool));
+});
+
+colorPicker.addEventListener("input", () => {
+    paintColor = colorPicker.value;
+})
+
 centerCanvasInView();
 resizeCanvasToWorkspace();
-udpateCursorStyle();
+selectTool("pencil");
+updateCursorStyle();
