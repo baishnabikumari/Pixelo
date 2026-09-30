@@ -15,6 +15,113 @@ const cursorInfo = document.getElementById("cursorInfo");
 const sizeInfo = document.getElementById("sizeInfo");
 const zoomInfo = document.getElementById("zoomInfo");
 
+const toolButtons = document.querySelectorAll(".toolButton");
+const colorPicker = document.getElementById("colorPicker");
+const toolInfo = document.getElementById("toolInfo");
+
+let activeTool = "pencil";
+let paintColor = colorPicker.value;
+let stroke = null;
+
+function cloneGrid(grid){
+    return grid.map((row) => row.slice());
+}
+
+function restoreGrid(target, source){
+    for(let y = 0; y < source.length; y++){
+        for(let x = 0; x < source[y].length; x++){
+            target[y][x] = source[y][x];
+        }
+    }
+}
+
+function isInsideCanvas(x, y){
+    return x >= 0 && x < CANVAS_WIDTH && y >= 0 && y < CANVAS_HEIGHT;
+}
+
+function setPixel(x, y, color){
+    if(!isInsideCanvas(x, y)) return;
+    pixelGridp[y][x] = color;
+}
+
+function getLinePoints(from, to){
+    const points = [];
+    const deltaX = Math.abs(to.x - from.x);
+    const deltaY = Math.abs(to.y - from.y);
+    const stepX = from.x < to.x ? 1 : -1;
+    const stepY = from.y < to.y ? 1 : -1;
+
+    let x = from.x;
+    let y = from.y;
+    let error = deltaX - deltaY;
+
+    while(true){
+        points.push({ x, y });
+        if(x === to.x && y === to.y) break;
+
+        const doubleError = error * 2;
+        if(doubleError > -deltaY){ error -= deltaY; x += stepX; }
+        if(doubleError < deltaX) { error += deltaX; y += stepY; }
+    }
+    return points;
+}
+
+function isSideStep(a, b){
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+}
+
+function isDiagonalStep(a, b){
+    return Math.abs(a.x - b.x) === 1 && Math.abs(a.y - b.y) === 1;
+}
+
+function dropCornerPixel(path, nextPoint){
+    if(path.length < 2) return;
+    const before = path[path.length - 2];
+    const corner = path[path.length - 1];
+    const makesL = 
+        isSideStep(before, corner) &&
+        isSideStep(corner, nextPoint) &&
+        isDiagonalStep(before, nextPoint);
+    if(makesL) path.pop();
+}
+
+function startStroke(pixel){
+    stroke = {
+        snapshot: cloneGrid(pixelGrid),
+        path: [pixel],
+        color: activeTool = "eraser" ? null : paintColor,
+        isPixelPerfect: activeTool === "pencil",
+    };
+    repaintStroke();
+}
+
+function extendStroke(pixel){
+    const lastPoint = stroke.path[stroke.path.length - 1];
+    if(pixel.x === lastPoint.x && pixel.y === lastPoint.y) return;
+
+    const newPoints = getLinePoints(lastPoint, pixel).slice(1);
+    for(const point of newPoints){
+        if(stroke.isPixelPerfect) dropCornerPixel(stroke.path, point);
+        stroke.path.push(point);
+    }
+    repaintStroke();
+}
+
+function repaintStroke(){
+    restoreGrid(pixelGrid, stroke.snapshot);
+    for(const point of stroke.path){
+        setPixel(point.x, point.y, stroke.color);
+    }
+}
+
+function selectTool(toolName){
+    activeTool = toolName;
+    for(const button of toolButtons){
+        button.classList.toggle("isActive", button.dataset.tool === toolName);
+    }
+    updateStatusBar();
+}
+
 const pixelGrid = createEmptyGrid(CANVAS_WIDTH, CANVAS_HEIGHT);
 const view = {
     zoomIndex: ZOOM_LEVELS.indexOf(12),
@@ -132,6 +239,7 @@ function drawHoverOutline(zoom){
 }
 
 function updateStatusBar(){
+    toolInfo.textContent = `tool: ${activeTool}`;
     sizeInfo.textContent = `${CANVAS_WIDTH} x ${CANVAS_HEIGHT}`;
     zoomInfo.textContent = `zoom ${getZoom() * 100}%`;
     cursorInfo.textContent = hoveredPixel
