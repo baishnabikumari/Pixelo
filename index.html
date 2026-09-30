@@ -1,27 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Pixelo</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pixelo</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="editorArea">
-        <aside class="toolbar">
-            <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
-            <button class="toolButton" data-tool="eraser" title="Eraser (E)">Eraser</button>
-            <input type="color" id="colorPicker" value="#3a86ff" title="Draw color">
-        </aside>
-        <main class="workspace" id="workspace">
-            <canvas id="editorCanvas"></canvas>
-        </main>
-    </div>
-    <footer class="statusBar">
-        <span id="cursorInfo">x: - y: -</span>
-        <span id="sizeInfo"></span>
-        <span id="zoomInfo"></span>
-        <span id="toolInfo"></span>
-    </footer>
-    <script src="app.js"></script>
+  <div class="editorArea">
+    <aside class="toolbar">
+      <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
+      <button class="toolButton" data-tool="eraser" title="Eraser (E)">Eraser</button>
+      <button class="toolButton" data-tool="fill" title="Fill (G)">Fill</button>
+      <button class="toolButton" data-tool="picker" title="Color picker (I)">Picker</button>
+      <button class="toolButton" data-tool="line" title="Line (L)">Line</button>
+      <button class="toolButton" data-tool="rectangle" title="Rectangle (R)">Rectangle</button>
+      <button class="toolButton" data-tool="ellipse" title="Ellipse (O)">Ellipse</button>
+
+      <label class="checkRow" title="Fill rectangles and ellipses">
+        <input type="checkbox" id="fillShapes"> Filled
+      </label>
+
+      <input type="color" id="colorPicker" value="#3a86ff" title="Draw color">
+    </aside>
+
+    <main class="workspace" id="workspace">
+      <canvas id="editorCanvas"></canvas>
+    </main>
+  </div>
+
+  <footer class="statusBar">
+    <span id="toolInfo"></span>
+    <span id="cursorInfo">x: -  y: -</span>
+    <span id="sizeInfo"></span>
+    <span id="zoomInfo"></span>
+  </footer>
+
+  <script src="app.js"></script>
 </body>
+</html>
