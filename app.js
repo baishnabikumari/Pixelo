@@ -32,6 +32,12 @@ const zoomInfo = document.getElementById("zoomInfo");
 const toolButtons = document.querySelectorAll(".toolButton");
 const colorPicker = document.getElementById("colorPicker");
 const fillShapesBox = document.getElementById("fillShapes");
+const themeToggleButton = document.getElementById("themeToggleButton");
+const shortcutsButton = document.getElementById("shortcutsButton");
+const shortcutsOverlay = document.getElementById("shortcutsOverlay");
+const closeShortcutButton = document.getElementById("closeShortcutsButton");
+const layerPanel = document.getElementById("layerPanel");
+const collapseLayersButton = document.getElementById("collapseLayerButton");
 
 // null means transparent
 const pixelGrid = createEmptyGrid(CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -118,6 +124,20 @@ function clampToCanvas(pixel) {
 function setPixel(x, y, color) {
   if (!isInsideCanvas(x, y)) return;
   pixelGrid[y][x] = color;
+}
+
+function toggleTheme(){
+  const isLight = document.body.dataset.theme = "light";
+  document.body.dataset.theme = isLight ? "dark" : "light";
+}
+
+function toggleLayerPanelCollapse(){
+  const iscollapsed = layerPanel.classList.toggle("isCollapsed");
+  collapseLayersButton.textContent = iscollapsed ? "▸" : "▾";
+}
+
+function setShortcutsVisible(isVisible){
+  shortcutsOverlay.classList.toggle("isHidden", !isVisible);
 }
 
 function changeZoom(direction, anchorX, anchorY) {
@@ -497,6 +517,14 @@ editorCanvas.addEventListener("pointerleave", () => {
   render();
 });
 
+themeToggleButton.addEventListener("click", toggleTheme);
+collapseLayersButton.addEventListener("click", toggleLayerPanelCollapse);
+shortcutsButton.addEventListener("click", () => setShortcutsVisible(true));
+closeShortcutButton.addEventListener("click", () => setShortcutsVisible(false));
+shortcutsOverlay.addEventListener("click", (event) => {
+  if(event.target === shortcutsOverlay) setShortcutsVisible(false);
+});
+
 editorCanvas.addEventListener(
   "wheel",
   (event) => {
@@ -531,6 +559,12 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Digit0") {
     centerCanvasInView();
     render();
+  }
+  if(event.key === "?"){
+    setShortcutsVisible(true);
+  }
+  if(event.code === "Escape"){
+    setShortcutsVisible(false);
   }
 
   const shortcutTool = TOOL_SHORTCUTS[event.code];
