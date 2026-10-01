@@ -72,6 +72,22 @@ body {
   user-select: none;
 }
 
+.historyRow {
+  display: flex;
+  gap: 6px;
+}
+
+.historyRow .toolButton {
+  flex: 1;
+  padding: 8px 2px;
+}
+
+.toolButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+  filter: none;
+}
+
 #colorPicker {
   width: 100%;
   height: 32px;

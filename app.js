@@ -20,6 +20,8 @@ const TOOL_SHORTCUTS = {
 const BRUSH_TOOLS = ["pencil", "eraser"];
 const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 
+const HISTORY_LIMIT = 50;
+
 const workspace = document.getElementById("workspace");
 const editorCanvas = document.getElementById("editorCanvas");
 const context = editorCanvas.getContext("2d");
@@ -37,6 +39,9 @@ const addLayerButton = document.getElementById("addLayerButton");
 const layerList = document.getElementById("layerList");
 const opacitySlider = document.getElementById("opacitySlider");
 const opacityValue = document.getElementById("opacityValue");
+
+const undoButton = document.getElementById("undoButton");
+const redoButton = document.getElementById("redoButton");
 
 const view = {
   zoomIndex: ZOOM_LEVELS.indexOf(12),
@@ -58,6 +63,9 @@ let layers = [];
 let activeLayerId = null;
 let nextLayerNumber = 1;
 
+let historyStack = [];
+let historyIndex = -1;
+
 function createEmptyGrid(width, height) {
   const rows = [];
   for (let y = 0; y < height; y++) {
@@ -76,6 +84,56 @@ function restoreGrid(target, source) {
       target[y][x] = source[y][x];
     }
   }
+}
+
+function cloneLayers(sourceLayers) {
+  return sourceLayers.map((layer) => ({
+    ...layer,
+    grid: cloneGrid(layer.grid),
+  }));
+}
+
+function pushHistorySnapshot() {
+  historyStack = historyStack.slice(0, historyIndex + 1);
+
+  historyStack.push({
+    layers: cloneLayers(layers),
+    activeLayerId,
+  });
+
+  if (historyStack.length > HISTORY_LIMIT) {
+    historyStack.shift();
+  } else {
+    historyIndex += 1;
+  }
+
+  updateHistoryButtons();
+}
+
+function restoreHistorySnapshot(snapshot) {
+  layers = cloneLayers(snapshot.layers);
+  activeLayerId = snapshot.activeLayerId;
+  renderLayerList();
+  render();
+}
+
+function undo() {
+  if (historyIndex <= 0) return;
+  historyIndex -= 1;
+  restoreHistorySnapshot(historyStack[historyIndex]);
+  updateHistoryButtons();
+}
+
+function redo() {
+  if (historyIndex >= historyStack.length - 1) return;
+  historyIndex += 1;
+  restoreHistorySnapshot(historyStack[historyIndex]);
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  undoButton.disabled = historyIndex <= 0;
+  redoButton.disabled = historyIndex >= historyStack.length - 1;
 }
 
 function createLayer(name) {
@@ -102,6 +160,7 @@ function addLayer() {
 
   renderLayerList();
   render();
+  pushHistorySnapshot();
 }
 
 function deleteLayer(layerId) {
@@ -117,6 +176,7 @@ function deleteLayer(layerId) {
 
   renderLayerList();
   render();
+  pushHistorySnapshot();
 }
 
 function selectLayer(layerId) {
@@ -126,7 +186,10 @@ function selectLayer(layerId) {
 
 function renameLayer(layerId, name) {
   const layer = layers.find((existing) => existing.id === layerId);
-  if (layer) layer.name = name || layer.name;
+  if (!layer || !name || name === layer.name) return;
+
+  layer.name = name;
+  pushHistorySnapshot();
 }
 
 function toggleLayerVisibility(layerId) {
@@ -136,6 +199,7 @@ function toggleLayerVisibility(layerId) {
   layer.isVisible = !layer.isVisible;
   renderLayerList();
   render();
+  pushHistorySnapshot();
 }
 
 function setActiveLayerOpacity(opacity) {
@@ -272,18 +336,15 @@ function getLinePoints(from, to) {
     if (x === to.x && y === to.y) break;
 
     const doubleError = error * 2;
-
     if (doubleError > -deltaY) {
       error -= deltaY;
       x += stepX;
     }
-
     if (doubleError < deltaX) {
       error += deltaX;
       y += stepY;
     }
   }
-
   return points;
 }
 
@@ -300,7 +361,6 @@ function dropCornerPixel(path, nextPoint) {
 
   const before = path[path.length - 2];
   const corner = path[path.length - 1];
-
   const makesL =
     isSideStep(before, corner) &&
     isSideStep(corner, nextPoint) &&
@@ -316,14 +376,12 @@ function getRectanglePoints(from, to, isFilled) {
   const bottom = Math.max(from.y, to.y);
 
   const points = [];
-
   for (let y = top; y <= bottom; y++) {
     for (let x = left; x <= right; x++) {
       const isOnEdge = x === left || x === right || y === top || y === bottom;
       if (isFilled || isOnEdge) points.push({ x, y });
     }
   }
-
   return points;
 }
 
@@ -345,7 +403,6 @@ function getEllipsePoints(from, to, isFilled) {
   }
 
   const points = [];
-
   for (let y = top; y <= bottom; y++) {
     for (let x = left; x <= right; x++) {
       if (!isInsideEllipse(x, y)) continue;
@@ -355,11 +412,9 @@ function getEllipsePoints(from, to, isFilled) {
         !isInsideEllipse(x - 1, y) ||
         !isInsideEllipse(x, y + 1) ||
         !isInsideEllipse(x, y - 1);
-
       if (isFilled || touchesOutside) points.push({ x, y });
     }
   }
-
   return points;
 }
 
@@ -369,11 +424,7 @@ function makeSquareEnd(start, end) {
   const roomX = goesLeft ? start.x : CANVAS_WIDTH - 1 - start.x;
   const roomY = goesUp ? start.y : CANVAS_HEIGHT - 1 - start.y;
 
-  const wantedSize = Math.max(
-    Math.abs(end.x - start.x),
-    Math.abs(end.y - start.y)
-  );
-
+  const wantedSize = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
   const size = Math.min(wantedSize, roomX, roomY);
 
   return {
@@ -389,21 +440,13 @@ function floodFill(grid, startPixel, newColor) {
   if (targetColor === newColor) return;
 
   const pending = [startPixel];
-
   while (pending.length > 0) {
     const { x, y } = pending.pop();
-
     if (!isInsideCanvas(x, y)) continue;
     if (grid[y][x] !== targetColor) continue;
 
     grid[y][x] = newColor;
-
-    pending.push(
-      { x: x + 1, y },
-      { x: x - 1, y },
-      { x, y: y + 1 },
-      { x, y: y - 1 }
-    );
+    pending.push({ x: x + 1, y }, { x: x - 1, y }, { x, y: y + 1 }, { x, y: y - 1 });
   }
 }
 
@@ -412,11 +455,9 @@ function pickColorAt(pixel) {
 
   for (let index = layers.length - 1; index >= 0; index--) {
     const layer = layers[index];
-
     if (!layer.isVisible) continue;
 
     const color = layer.grid[pixel.y][pixel.x];
-
     if (color !== null) {
       paintColor = color;
       colorPicker.value = color;
@@ -438,17 +479,14 @@ function startDrag(pixel) {
     endPixel: startPixel,
     path: [startPixel],
   };
-
   redrawDrag();
 }
 
 function extendBrushPath(pixel) {
   const lastPoint = drag.path[drag.path.length - 1];
-
   if (pixel.x === lastPoint.x && pixel.y === lastPoint.y) return;
 
   const newPoints = getLinePoints(lastPoint, pixel).slice(1);
-
   for (const point of newPoints) {
     if (drag.tool === "pencil") dropCornerPixel(drag.path, point);
     drag.path.push(point);
@@ -461,80 +499,41 @@ function updateDrag(pixel, keepSquare) {
   } else {
     const endPixel = clampToCanvas(pixel);
     const isRoundShape = drag.tool !== "line";
-
-    drag.endPixel =
-      keepSquare && isRoundShape
-        ? makeSquareEnd(drag.startPixel, endPixel)
-        : endPixel;
+    drag.endPixel = keepSquare && isRoundShape
+      ? makeSquareEnd(drag.startPixel, endPixel)
+      : endPixel;
   }
-
   redrawDrag();
 }
 
 function getDragPoints() {
   const { tool, startPixel, endPixel } = drag;
-
   if (BRUSH_TOOLS.includes(tool)) return drag.path;
-
-  if (tool === "line") {
-    return getLinePoints(startPixel, endPixel);
-  }
-
-  if (tool === "rectangle") {
-    return getRectanglePoints(
-      startPixel,
-      endPixel,
-      fillShapesBox.checked
-    );
-  }
-
-  return getEllipsePoints(
-    startPixel,
-    endPixel,
-    fillShapesBox.checked
-  );
+  if (tool === "line") return getLinePoints(startPixel, endPixel);
+  if (tool === "rectangle") return getRectanglePoints(startPixel, endPixel, fillShapesBox.checked);
+  return getEllipsePoints(startPixel, endPixel, fillShapesBox.checked);
 }
 
 function redrawDrag() {
   restoreGrid(drag.layer.grid, drag.snapshot);
-
   for (const point of getDragPoints()) {
-    setPixel(
-      drag.layer.grid,
-      point.x,
-      point.y,
-      drag.color
-    );
+    setPixel(drag.layer.grid, point.x, point.y, drag.color);
   }
 }
 
 function selectTool(toolName) {
   activeTool = toolName;
-
   for (const button of toolButtons) {
-    button.classList.toggle(
-      "isActive",
-      button.dataset.tool === toolName
-    );
+    button.classList.toggle("isActive", button.dataset.tool === toolName);
   }
-
   updateStatusBar();
 }
 
 function drawCheckerboard(zoom) {
   for (let y = 0; y < CANVAS_HEIGHT; y++) {
     for (let x = 0; x < CANVAS_WIDTH; x++) {
-      context.fillStyle =
-        (x + y) % 2 === 0
-          ? CHECKER_LIGHT
-          : CHECKER_DARK;
-
-      context.fillRect(
-        view.offsetX + x * zoom,
-        view.offsetY + y * zoom,
-        zoom,
-        zoom
-      );
+      context.fillStyle = (x + y) % 2 === 0 ? CHECKER_LIGHT : CHECKER_DARK;
+      context.fillRect(view.offsetX + x * zoom, view.offsetY + y * zoom, zoom, zoom);
     }
   }
 }
@@ -544,25 +543,15 @@ function drawLayers(zoom) {
     if (!layer.isVisible || layer.opacity === 0) continue;
 
     context.globalAlpha = layer.opacity / 100;
-
     for (let y = 0; y < CANVAS_HEIGHT; y++) {
       for (let x = 0; x < CANVAS_WIDTH; x++) {
         const color = layer.grid[y][x];
-
         if (color === null) continue;
-
         context.fillStyle = color;
-
-        context.fillRect(
-          view.offsetX + x * zoom,
-          view.offsetY + y * zoom,
-          zoom,
-          zoom
-        );
+        context.fillRect(view.offsetX + x * zoom, view.offsetY + y * zoom, zoom, zoom);
       }
     }
   }
-
   context.globalAlpha = 1;
 }
 
@@ -575,28 +564,23 @@ function drawGridLines(zoom) {
   context.strokeStyle = "rgba(0, 0, 0, 0.18)";
   context.lineWidth = 1;
   context.beginPath();
-
   for (let x = 0; x <= CANVAS_WIDTH; x++) {
     const lineX = left + x * zoom + 0.5;
     context.moveTo(lineX, top);
     context.lineTo(lineX, top + height);
   }
-
   for (let y = 0; y <= CANVAS_HEIGHT; y++) {
     const lineY = top + y * zoom + 0.5;
     context.moveTo(left, lineY);
     context.lineTo(left + width, lineY);
   }
-
   context.stroke();
 }
 
 function drawHoverOutline(zoom) {
   if (!hoveredPixel || isPanning) return;
-
   context.strokeStyle = "#ff4d6d";
   context.lineWidth = 2;
-
   context.strokeRect(
     view.offsetX + hoveredPixel.x * zoom + 1,
     view.offsetY + hoveredPixel.y * zoom + 1,
@@ -607,14 +591,11 @@ function drawHoverOutline(zoom) {
 
 function updateStatusBar() {
   const activeLayer = getActiveLayer();
-
   toolInfo.textContent = activeLayer
     ? `tool: ${activeTool}  layer: ${activeLayer.name}`
     : `tool: ${activeTool}`;
-
   sizeInfo.textContent = `${CANVAS_WIDTH} x ${CANVAS_HEIGHT}`;
   zoomInfo.textContent = `zoom ${getZoom() * 100}%`;
-
   cursorInfo.textContent = hoveredPixel
     ? `x: ${hoveredPixel.x}  y: ${hoveredPixel.y}`
     : "x: -  y: -";
@@ -622,57 +603,43 @@ function updateStatusBar() {
 
 function render() {
   const zoom = getZoom();
-
-  context.clearRect(
-    0,
-    0,
-    workspace.clientWidth,
-    workspace.clientHeight
-  );
+  context.clearRect(0, 0, workspace.clientWidth, workspace.clientHeight);
 
   drawCheckerboard(zoom);
   drawLayers(zoom);
-
-  if (zoom >= GRID_MIN_ZOOM) {
-    drawGridLines(zoom);
-  }
-
+  if (zoom >= GRID_MIN_ZOOM) drawGridLines(zoom);
   drawHoverOutline(zoom);
   updateStatusBar();
 }
 
 function updateCursorStyle() {
-  if (isPanning) {
-    editorCanvas.style.cursor = "grabbing";
-  } else if (isSpaceHeld) {
-    editorCanvas.style.cursor = "grab";
-  } else {
-    editorCanvas.style.cursor = "crosshair";
-  }
+  if (isPanning) editorCanvas.style.cursor = "grabbing";
+  else if (isSpaceHeld) editorCanvas.style.cursor = "grab";
+  else editorCanvas.style.cursor = "crosshair";
 }
 
 function startPanning(event) {
   isPanning = true;
   lastPointerX = event.clientX;
   lastPointerY = event.clientY;
-
   editorCanvas.setPointerCapture(event.pointerId);
-
   updateCursorStyle();
 }
 
 function endPointerAction() {
+  const hadDrag = drag !== null;
+
   isPanning = false;
   drag = null;
-
   updateCursorStyle();
   render();
+
+  if (hadDrag) pushHistorySnapshot();
 }
 
 editorCanvas.addEventListener("pointerdown", (event) => {
   const isMiddleButton = event.button === 1;
   const isSpaceDrag = event.button === 0 && isSpaceHeld;
-
   if (isMiddleButton || isSpaceDrag) {
     event.preventDefault();
     startPanning(event);
@@ -688,15 +655,10 @@ editorCanvas.addEventListener("pointerdown", (event) => {
     pickColorAt(pixel);
     return;
   }
-
   if (activeTool === "fill") {
-    floodFill(
-      getActiveLayer().grid,
-      pixel,
-      paintColor
-    );
-
+    floodFill(getActiveLayer().grid, pixel, paintColor);
     render();
+    pushHistorySnapshot();
     return;
   }
 
@@ -712,30 +674,18 @@ editorCanvas.addEventListener("pointermove", (event) => {
   if (isPanning) {
     view.offsetX += event.clientX - lastPointerX;
     view.offsetY += event.clientY - lastPointerY;
-
     lastPointerX = event.clientX;
     lastPointerY = event.clientY;
   } else if (drag) {
     updateDrag(pixel, event.shiftKey);
   }
 
-  hoveredPixel =
-    isInsideCanvas(pixel.x, pixel.y)
-      ? pixel
-      : null;
-
+  hoveredPixel = isInsideCanvas(pixel.x, pixel.y) ? pixel : null;
   render();
 });
 
-editorCanvas.addEventListener(
-  "pointerup",
-  endPointerAction
-);
-
-editorCanvas.addEventListener(
-  "pointercancel",
-  endPointerAction
-);
+editorCanvas.addEventListener("pointerup", endPointerAction);
+editorCanvas.addEventListener("pointercancel", endPointerAction);
 
 editorCanvas.addEventListener("pointerleave", () => {
   hoveredPixel = null;
@@ -746,56 +696,37 @@ editorCanvas.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
-
     const position = getPointerPosition(event);
-    const direction =
-      event.deltaY < 0
-        ? 1
-        : -1;
-
-    changeZoom(
-      direction,
-      position.x,
-      position.y
-    );
+    const direction = event.deltaY < 0 ? 1 : -1;
+    changeZoom(direction, position.x, position.y);
   },
   { passive: false }
 );
 
 toolButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    selectTool(button.dataset.tool);
-  });
+  button.addEventListener("click", () => selectTool(button.dataset.tool));
 });
 
 colorPicker.addEventListener("input", () => {
   paintColor = colorPicker.value;
 });
 
-addLayerButton.addEventListener(
-  "click",
-  addLayer
-);
-
+addLayerButton.addEventListener("click", addLayer);
+undoButton.addEventListener("click", undo);
+redoButton.addEventListener("click", redo);
 opacitySlider.addEventListener("input", () => {
-  setActiveLayerOpacity(
-    Number(opacitySlider.value)
-  );
-});
-
-document.addEventListener("click", (event) => {
-  if (event.target.matches("button")) {
-    event.target.blur();
-  }
-});
-
-colorPicker.addEventListener("change", () => {
-  colorPicker.blur();
+  setActiveLayerOpacity(Number(opacitySlider.value));
 });
 
 opacitySlider.addEventListener("change", () => {
-  opacitySlider.blur();
+  pushHistorySnapshot();
 });
+
+document.addEventListener("click", (event) => {
+  if (event.target.matches("button")) event.target.blur();
+});
+colorPicker.addEventListener("change", () => colorPicker.blur());
+opacitySlider.addEventListener("change", () => opacitySlider.blur());
 
 window.addEventListener("keydown", (event) => {
   if (event.target.matches("input")) return;
@@ -805,20 +736,24 @@ window.addEventListener("keydown", (event) => {
     isSpaceHeld = true;
     updateCursorStyle();
   }
-
   if (event.code === "Digit0") {
     centerCanvasInView();
     render();
   }
 
   const shortcutTool = TOOL_SHORTCUTS[event.code];
-
-  if (
-    shortcutTool &&
-    !event.ctrlKey &&
-    !event.metaKey
-  ) {
+  if (shortcutTool && !event.ctrlKey && !event.metaKey) {
     selectTool(shortcutTool);
+  }
+
+  const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+  if (isCtrlOrCmd && event.code === "KeyZ" && !event.shiftKey) {
+    event.preventDefault();
+    undo();
+  }
+  if (isCtrlOrCmd && (event.code === "KeyY" || (event.code === "KeyZ" && event.shiftKey))) {
+    event.preventDefault();
+    redo();
   }
 });
 
@@ -834,12 +769,8 @@ window.addEventListener("resize", () => {
 });
 
 function setUpInitialLayer() {
-  const layer = createLayer(
-    `Layer ${nextLayerNumber}`
-  );
-
+  const layer = createLayer(`Layer ${nextLayerNumber}`);
   nextLayerNumber += 1;
-
   layers.push(layer);
   activeLayerId = layer.id;
 }
@@ -850,3 +781,4 @@ centerCanvasInView();
 resizeCanvasToWorkspace();
 selectTool("pencil");
 updateCursorStyle();
+pushHistorySnapshot();
