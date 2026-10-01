@@ -6,7 +6,14 @@
   <title>Pixelo</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-theme="dark">
+  <header class="appHeader">
+    <span class="appTitle">Pixelo</span>
+    <div class="headerButtons">
+      <button class="iconButton" id="shortcutButton" title="keyboard shortcut (?)">?</button>
+      <button class="iconButton" id="themeToggleButton" title="Toggle light/dark theme">◐</button>
+    </div>
+  </header>
   <div class="editorArea">
     <aside class="toolbar">
       <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
@@ -35,6 +42,29 @@
     <span id="sizeInfo"></span>
     <span id="zoomInfo"></span>
   </footer>
+
+  <div class="shortcutsOverlay isHidden" id="shortcutsOverlay">
+    <div class="shortcutsCard">
+      <div class="shortcutsHeader">
+        <span>keyboard shortcuts</span>
+        <button class="panelButton" id="closeShortcutsButton" title="Close">x</button>
+      </div>
+      <dl class="shortcutsList">
+        <dt>B</dt><dd>Pencil</dd>
+        <dt>E</dt><dd>Eraser</dd>
+        <dt>G</dt><dd>Fill</dd>
+        <dt>I</dt><dd>Color picker</dd>
+        <dt>L</dt><dd>Line</dd>
+        <dt>R</dt><dd>Rectangle</dd>
+        <dt>O</dt><dd>Ellipse</dd>
+        <dt>Shift + drag</dt><dd>Center canvas</dd>
+        <dt>0</dt><dd>Center canvas</dd>
+        <dt>Space + drag</dt><dd></dd>
+        <dt>Ctrl/Cmd + Z</dt><dd>Undo</dd>
+        <dt>Ctrl/Cmd + Y</dt><dd>Redo</dd>
+      </dl>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
