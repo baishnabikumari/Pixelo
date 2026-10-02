@@ -62,6 +62,11 @@ let lastPointerY = 0;
 let layers = [];
 let activeLayerId = null;
 let nextLayerNumber = 1;
+let frames = [];
+let activeFrameIndex = 0;
+
+const frameList = document.getElementById("frameList");
+const addFrameButton = document.getElementById("addFrameButton");
 
 let historyStack = [];
 let historyIndex = -1;
@@ -87,10 +92,14 @@ function restoreGrid(target, source) {
 }
 
 function cloneLayers(sourceLayers) {
-  return sourceLayers.map((layer) => ({
-    ...layer,
-    grid: cloneGrid(layer.grid),
-  }));
+  return{
+    id: `frame-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name,
+    layers: cloneLayers(layersForFrame),
+  };
+  function captureActiveFrame(){
+    frames[activeFrameIndex].layers = cloneLayers(layers);
+  }
 }
 
 function pushHistorySnapshot() {
@@ -637,6 +646,72 @@ function endPointerAction() {
   if (hadDrag) pushHistorySnapshot();
 }
 
+function loadFrame(index){
+  activeFrameIndex = index;
+  layers = cloneLayers(frames[index].layers);
+  activeLayerId = layers[0]?.id ?? null;
+  renderLayerList();
+  render();
+}
+
+function selectFrame(index){
+  if(index === activeFrameIndex) return;
+  captureOwnerStack();
+  loadFrame(index);
+  renderFrameList();
+}
+
+function addFrame(){
+  captureActiveFrame();
+  const frame = createFrame(`Frame ${frames.length + 1}`, layers);
+  frames.splice(activeFrameIndex + 1);
+  renderFrameList();
+}
+
+function deleteFrame(index){
+  if(frames.length <= 1) return;
+  frames.splice(index, 1);
+  const fallbackIndex = Math.min(index, frames.length - 1);
+  loadFrame(fallbackIndex);
+  renderFrameList();
+}
+
+function renameFrame(index, name){
+  if(!name || name === frames[index].name) return;
+  frames[index].name = name;
+  renderFrameList();
+}
+
+function renderFrameList(){
+  frameList.innerHTML = "";
+
+  frames.forEach((frame, index) => {
+    const button = document.createElement("div");
+    button.className = "frameButton";
+    button.classList.toggle("isActive", index === activeFrameIndex);
+
+    const nameField = document.createElement("input");
+    nameField.type = "text";
+    nameField.className = "layerName";
+    nameField.value = frame.name;
+    nameField.addEventListener("click", (event) => event.stopPropagation());
+    nameField.addEventListener("change", () => renameFrame(index, nameField.value.trim()));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "deleteFrameButton";
+    deleteButton.textContent = "\u00d7";
+    deleteButton.title = "Delete frame";
+    deleteButton.disabled = frames.length <= 1;
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteFrame(index);
+    });
+    button.append(nameField, deleteButton);
+    button.addEventListener("click", () => selectFrame(index));
+    frameList.appendChild(button);
+  })
+}
+
 editorCanvas.addEventListener("pointerdown", (event) => {
   const isMiddleButton = event.button === 1;
   const isSpaceDrag = event.button === 0 && isSpaceHeld;
@@ -712,6 +787,7 @@ colorPicker.addEventListener("input", () => {
 });
 
 addLayerButton.addEventListener("click", addLayer);
+addFrameButton.addEventListener("click", addFrame);
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
 opacitySlider.addEventListener("input", () => {
@@ -776,7 +852,10 @@ function setUpInitialLayer() {
 }
 
 setUpInitialLayer();
+frames = [createFrame("Frame 1", layers)];
+activeFrameIndex = 0;
 renderLayerList();
+renderFrameList();
 centerCanvasInView();
 resizeCanvasToWorkspace();
 selectTool("pencil");

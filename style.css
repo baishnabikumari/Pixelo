@@ -239,3 +239,49 @@ body {
   background: var(--bg-status);
   font-variant-numeric: tabular-nums;
 }
+
+.frameStrip{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+}
+
+.frameList{
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.frameButton{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: var(--bg-row);
+  color: pointer;
+  white-space: nowrap;
+  flex: none;
+}
+
+.frameButton.isActive{
+  background: var(--bg-row-active);
+  outline: 1px solid var(--accent);
+}
+
+.deleteFrameButton{
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.deleteFrameButton:hover{
+  color: #ff4d6d;
+}
