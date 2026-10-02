@@ -50,13 +50,22 @@
   </div>
 
   <div class="frameStrip">
+    <div class="previewBox">
+      <canvas id="previewCanvas" width="32" height="32"></canvas>
+      <button class="panelButton" id="playButton" title="Play/pause preview">▶</button>
+      <label class="fpsRow">
+        FPS
+        <input type="range" id="fpsSlider" min="1" max="24" value="8">
+        <span id="fpsValue">8</span>
+      </label>
+    </div>
     <div class="frameList" id="frameList"></div>
     <button class="panelButton" id="addFrameButton" title="Add frame"></button>
   </div>
 
   <footer class="statusBar">
     <span id="toolInfo"></span>
-    <span id="cursorInfo">x: -  y: -</span>
+    <span id="cursorInfo">x: - y: -</span>
     <span id="sizeInfo"></span>
     <span id="zoomInfo"></span>
   </footer>

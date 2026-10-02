@@ -67,9 +67,17 @@ let activeFrameIndex = 0;
 
 const frameList = document.getElementById("frameList");
 const addFrameButton = document.getElementById("addFrameButton");
+const previewCanvas = document.getElementById("previewCanvas");
+const previewContext = previewCanvas.getContext("2d");
+const playButton = document.getElementById("playButton");
+const fpsSlider = document.getElementById("fpsSlider");
+const fpsValue = document.getElementById("fpsValue");
 
 let historyStack = [];
 let historyIndex = -1;
+let isPlaying = false;
+let playbackFrameIndex = 0;
+let playbackTimerId = null;
 
 function createEmptyGrid(width, height) {
   const rows = [];
@@ -91,7 +99,14 @@ function restoreGrid(target, source) {
   }
 }
 
-function cloneLayers(sourceLayers) {
+function cloneLayers(sourceLayers){
+  return sourceLayers.map((layer) => ({
+    ...layer,
+    grid: cloneGrid(layer.grid),
+  }));
+}
+
+function createFrame(name, layersForFrame) {
   return{
     id: `frame-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name,
@@ -619,6 +634,23 @@ function render() {
   if (zoom >= GRID_MIN_ZOOM) drawGridLines(zoom);
   drawHoverOutline(zoom);
   updateStatusBar();
+
+  if (!isPlaying){
+    previewCanvas.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    for(const layer of layers){
+      if(!layer.isVisible || layer.opacity === 0) continue;
+      previewContext.globalAlpha = layer.opacity / 100;
+      for(let y = 0; y < CANVAS_HEIGHT; y++){
+        for(let x = 0; x < CANVAS_WIDTH; x++){
+          const color = layer.grid[y][x];
+          if(color === null) continue;
+          previewContext.fillStyle = color;
+          previewContext.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+    previewContext.globalAlpha = 1;
+  }
 }
 
 function updateCursorStyle() {
@@ -656,7 +688,7 @@ function loadFrame(index){
 
 function selectFrame(index){
   if(index === activeFrameIndex) return;
-  captureOwnerStack();
+  captureActiveFrame();
   loadFrame(index);
   renderFrameList();
 }
@@ -664,7 +696,8 @@ function selectFrame(index){
 function addFrame(){
   captureActiveFrame();
   const frame = createFrame(`Frame ${frames.length + 1}`, layers);
-  frames.splice(activeFrameIndex + 1);
+  frames.splice(activeFrameIndex + 1, 0, frame);
+  loadFrame(activeFrameIndex + 1);
   renderFrameList();
 }
 
@@ -710,6 +743,57 @@ function renderFrameList(){
     button.addEventListener("click", () => selectFrame(index));
     frameList.appendChild(button);
   })
+
+  function drawFrameToPreview(frame){
+    previewContext.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    for(const layer of frame.layers){
+      if(!layer.isVisible || layer.opacity === 0) continue;
+
+      previewCanvas.globalAlpha = layer.opacity / 100;
+      for(let y = 0; y < CANVAS_HEIGHT; y++){
+        for(let x = 0; x < CANVAS_WIDTH; x++){
+          const color = layer.grid[y][x];
+          if(color === null) continue;
+          previewContext.fillStyle = color;
+          previewContext.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+    previewContext.globalAlpha = 1;
+  }
+  function stopPlayback(){
+    isPlaying = false;
+    playButton.textContent = "▶";
+    clearInterval(playbackTimerId);
+    playbackTimerId = null;
+
+    const activeFrame = frames[activeFrameIndex];
+    if(activeFrame) drawFrameToPreview(activeFrame);
+  }
+
+  function startPlayback(){
+    captureActiveFrame();
+    isPlaying = true;
+    playButton.textContent = "⏸";
+    playbackFrameIndex = activeFrameIndex;
+    const fps = Number(fpsSlider.value);
+    playbackTimerId = setInterval(() => {
+      playbackFrameIndex = (playbackFrameIndex + 1) % frames.length;
+      drawFrameToPreview(frames[playbackFrameIndex]);
+    }, 1000 / fps);
+  }
+
+  function togglePlayback(){
+    if(isPlaying) stopPlayback();
+    else startPlayback();
+  }
+
+  function restartPlaybackIfPlaying(){
+    if(!isPlaying) return;
+    stopPlayback();
+    startPlayback();
+  }
 }
 
 editorCanvas.addEventListener("pointerdown", (event) => {
@@ -788,6 +872,12 @@ colorPicker.addEventListener("input", () => {
 
 addLayerButton.addEventListener("click", addLayer);
 addFrameButton.addEventListener("click", addFrame);
+playButton.addEventListener("click", togglePlayback);
+fpsSlider.addEventListener("input", () => {
+  fpsValue.addEventListener = fpsSlider.value;
+  restartPlaybackIfPlaying();
+});
+
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
 opacitySlider.addEventListener("input", () => {

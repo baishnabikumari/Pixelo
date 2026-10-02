@@ -285,3 +285,32 @@ body {
 .deleteFrameButton:hover{
   color: #ff4d6d;
 }
+
+.previewBox{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+
+#previewCanvas{
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 4px;
+}
+
+.fpsRow{
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fpsRow input{
+  width: 80px;
+}
