@@ -72,12 +72,14 @@ const previewContext = previewCanvas.getContext("2d");
 const playButton = document.getElementById("playButton");
 const fpsSlider = document.getElementById("fpsSlider");
 const fpsValue = document.getElementById("fpsValue");
+const onionSkinButton = document.getElementById("onionSkinButton");
 
 let historyStack = [];
 let historyIndex = -1;
 let isPlaying = false;
 let playbackFrameIndex = 0;
 let playbackTimerId = null;
+let isOnionSkinEnabled = null;
 
 function createEmptyGrid(width, height) {
   const rows = [];
@@ -99,7 +101,7 @@ function restoreGrid(target, source) {
   }
 }
 
-function cloneLayers(sourceLayers){
+function cloneLayers(sourceLayers) {
   return sourceLayers.map((layer) => ({
     ...layer,
     grid: cloneGrid(layer.grid),
@@ -107,14 +109,14 @@ function cloneLayers(sourceLayers){
 }
 
 function createFrame(name, layersForFrame) {
-  return{
+  return {
     id: `frame-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     name,
     layers: cloneLayers(layersForFrame),
   };
-  function captureActiveFrame(){
-    frames[activeFrameIndex].layers = cloneLayers(layers);
-  }
+}
+function captureActiveFrame() {
+  frames[activeFrameIndex].layers = cloneLayers(layers);
 }
 
 function pushHistorySnapshot() {
@@ -579,6 +581,38 @@ function drawLayers(zoom) {
   context.globalAlpha = 1;
 }
 
+function drawOnionSkinFrame(zoom, frame, tintColor) {
+  context.globalAlpha = 0.25;
+  context.fillStyle = tintColor;
+
+  for (const layer of frame.layers) {
+    if (!layer.isVisible) continue;
+
+    for (let y = 0; y < CANVAS_HEIGHT; y++) {
+      for (let x = 0; x < CANVAS_WIDTH; x++) {
+        if (layer.grid[y][x] === null) continue;
+        context.fillRect(view.offsetX + x * zoom, view.offsetY + y * zoom, zoom, zoom);
+      }
+    }
+  }
+  context.globalAlpha = 1;
+}
+
+function drawOnionSkin(zoom) {
+  if (!isOnionSkinEnabled) return;
+
+  const previousFrame = frames[activeFrameIndex - 1];
+  const nextFrame = frames[activeFrameIndex + 1];
+  if (previousFrame) drawOnionSkinFrame(zoom, previousFrame, "#3a86ff");
+  if (nextFrame) drawOnionSkinFrame(zoom, nextFrame, "#ff8c3a");
+}
+
+function toggleOnionSkin() {
+  isOnionSkinEnabled = !isOnionSkinEnabled;
+  onionSkinButton.classList.toggle("isActive", isOnionSkinEnabled);
+  render();
+}
+
 function drawGridLines(zoom) {
   const left = view.offsetX;
   const top = view.offsetY;
@@ -630,20 +664,21 @@ function render() {
   context.clearRect(0, 0, workspace.clientWidth, workspace.clientHeight);
 
   drawCheckerboard(zoom);
+  drawOnionSkin(zoom);
   drawLayers(zoom);
   if (zoom >= GRID_MIN_ZOOM) drawGridLines(zoom);
   drawHoverOutline(zoom);
   updateStatusBar();
 
-  if (!isPlaying){
-    previewCanvas.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    for(const layer of layers){
-      if(!layer.isVisible || layer.opacity === 0) continue;
+  if (!isPlaying) {
+    previewContext.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    for (const layer of layers) {
+      if (!layer.isVisible || layer.opacity === 0) continue;
       previewContext.globalAlpha = layer.opacity / 100;
-      for(let y = 0; y < CANVAS_HEIGHT; y++){
-        for(let x = 0; x < CANVAS_WIDTH; x++){
+      for (let y = 0; y < CANVAS_HEIGHT; y++) {
+        for (let x = 0; x < CANVAS_WIDTH; x++) {
           const color = layer.grid[y][x];
-          if(color === null) continue;
+          if (color === null) continue;
           previewContext.fillStyle = color;
           previewContext.fillRect(x, y, 1, 1);
         }
@@ -678,7 +713,7 @@ function endPointerAction() {
   if (hadDrag) pushHistorySnapshot();
 }
 
-function loadFrame(index){
+function loadFrame(index) {
   activeFrameIndex = index;
   layers = cloneLayers(frames[index].layers);
   activeLayerId = layers[0]?.id ?? null;
@@ -686,14 +721,14 @@ function loadFrame(index){
   render();
 }
 
-function selectFrame(index){
-  if(index === activeFrameIndex) return;
+function selectFrame(index) {
+  if (index === activeFrameIndex) return;
   captureActiveFrame();
   loadFrame(index);
   renderFrameList();
 }
 
-function addFrame(){
+function addFrame() {
   captureActiveFrame();
   const frame = createFrame(`Frame ${frames.length + 1}`, layers);
   frames.splice(activeFrameIndex + 1, 0, frame);
@@ -701,21 +736,21 @@ function addFrame(){
   renderFrameList();
 }
 
-function deleteFrame(index){
-  if(frames.length <= 1) return;
+function deleteFrame(index) {
+  if (frames.length <= 1) return;
   frames.splice(index, 1);
   const fallbackIndex = Math.min(index, frames.length - 1);
   loadFrame(fallbackIndex);
   renderFrameList();
 }
 
-function renameFrame(index, name){
-  if(!name || name === frames[index].name) return;
+function renameFrame(index, name) {
+  if (!name || name === frames[index].name) return;
   frames[index].name = name;
   renderFrameList();
 }
 
-function renderFrameList(){
+function renderFrameList() {
   frameList.innerHTML = "";
 
   frames.forEach((frame, index) => {
@@ -742,58 +777,58 @@ function renderFrameList(){
     button.append(nameField, deleteButton);
     button.addEventListener("click", () => selectFrame(index));
     frameList.appendChild(button);
-  })
+  });
+}
 
-  function drawFrameToPreview(frame){
-    previewContext.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+function drawFrameToPreview(frame) {
+  previewContext.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    for(const layer of frame.layers){
-      if(!layer.isVisible || layer.opacity === 0) continue;
+  for (const layer of frame.layers) {
+    if (!layer.isVisible || layer.opacity === 0) continue;
 
-      previewCanvas.globalAlpha = layer.opacity / 100;
-      for(let y = 0; y < CANVAS_HEIGHT; y++){
-        for(let x = 0; x < CANVAS_WIDTH; x++){
-          const color = layer.grid[y][x];
-          if(color === null) continue;
-          previewContext.fillStyle = color;
-          previewContext.fillRect(x, y, 1, 1);
-        }
+    previewContext.globalAlpha = layer.opacity / 100;
+    for (let y = 0; y < CANVAS_HEIGHT; y++) {
+      for (let x = 0; x < CANVAS_WIDTH; x++) {
+        const color = layer.grid[y][x];
+        if (color === null) continue;
+        previewContext.fillStyle = color;
+        previewContext.fillRect(x, y, 1, 1);
       }
     }
-    previewContext.globalAlpha = 1;
   }
-  function stopPlayback(){
-    isPlaying = false;
-    playButton.textContent = "▶";
-    clearInterval(playbackTimerId);
-    playbackTimerId = null;
+  previewContext.globalAlpha = 1;
+}
+function stopPlayback() {
+  isPlaying = false;
+  playButton.textContent = "▶";
+  clearInterval(playbackTimerId);
+  playbackTimerId = null;
 
-    const activeFrame = frames[activeFrameIndex];
-    if(activeFrame) drawFrameToPreview(activeFrame);
-  }
+  const activeFrame = frames[activeFrameIndex];
+  if (activeFrame) drawFrameToPreview(activeFrame);
+}
 
-  function startPlayback(){
-    captureActiveFrame();
-    isPlaying = true;
-    playButton.textContent = "⏸";
-    playbackFrameIndex = activeFrameIndex;
-    const fps = Number(fpsSlider.value);
-    playbackTimerId = setInterval(() => {
-      playbackFrameIndex = (playbackFrameIndex + 1) % frames.length;
-      drawFrameToPreview(frames[playbackFrameIndex]);
-    }, 1000 / fps);
-  }
+function startPlayback() {
+  captureActiveFrame();
+  isPlaying = true;
+  playButton.textContent = "⏸";
+  playbackFrameIndex = activeFrameIndex;
+  const fps = Number(fpsSlider.value);
+  playbackTimerId = setInterval(() => {
+    playbackFrameIndex = (playbackFrameIndex + 1) % frames.length;
+    drawFrameToPreview(frames[playbackFrameIndex]);
+  }, 1000 / fps);
+}
 
-  function togglePlayback(){
-    if(isPlaying) stopPlayback();
-    else startPlayback();
-  }
+function togglePlayback() {
+  if (isPlaying) stopPlayback();
+  else startPlayback();
+}
 
-  function restartPlaybackIfPlaying(){
-    if(!isPlaying) return;
-    stopPlayback();
-    startPlayback();
-  }
+function restartPlaybackIfPlaying() {
+  if (!isPlaying) return;
+  stopPlayback();
+  startPlayback();
 }
 
 editorCanvas.addEventListener("pointerdown", (event) => {
@@ -873,8 +908,9 @@ colorPicker.addEventListener("input", () => {
 addLayerButton.addEventListener("click", addLayer);
 addFrameButton.addEventListener("click", addFrame);
 playButton.addEventListener("click", togglePlayback);
+onionSkinButton.addEventListener("click", toggleOnionSkin);
 fpsSlider.addEventListener("input", () => {
-  fpsValue.addEventListener = fpsSlider.value;
+  fpsValue.textContent = fpsSlider.value;
   restartPlaybackIfPlaying();
 });
 
