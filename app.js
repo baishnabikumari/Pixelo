@@ -34,6 +34,9 @@ const zoomInfo = document.getElementById("zoomInfo");
 const toolButtons = document.querySelectorAll(".toolButton");
 const colorPicker = document.getElementById("colorPicker");
 const fillShapesBox = document.getElementById("fillShapes");
+const paletteSwatches = document.getElementById("paletteSwatches");
+const paletteImportInput = document.getElementById("paletteImportInput");
+const paletteImportButton = document.getElementById("paletteImportButton");
 
 const addLayerButton = document.getElementById("addLayerButton");
 const layerList = document.getElementById("layerList");
@@ -52,6 +55,8 @@ const view = {
 let activeTool = "pencil";
 let paintColor = colorPicker.value;
 let drag = null;
+
+let palette = ["#3a86ff", "#ff006e", "#ffbe0b", "#8338ec", "#06d6a0", "#ffffff", "#8b8b9a", "#000000"];
 
 let hoveredPixel = null;
 let isPanning = false;
@@ -547,6 +552,55 @@ function redrawDrag() {
   }
 }
 
+function parseHexList(text) {
+  const matches = text.match(/#?[0-9a-fA-F]{6}\b/g) || [];
+  return matches.map((hex) => (hex.startsWith("#") ? hex : `#${hex}`));
+}
+
+function setPalette(newColors) {
+  if (newColors.length === 0) return;
+  palette = newColors;
+  renderPalette();
+}
+
+async function importPalette(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return;
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    try {
+      const response = await fetch(trimmed);
+      const text = await response.text();
+      setPalette(parseHexList(text));
+    } catch (error) {
+      console.error("palette import failed:", error);
+    }
+    return;
+  }
+
+  setPalette(parseHexList(trimmed));
+}
+
+function selectPaletteColor(color) {
+  paintColor = color;
+  colorPicker.value = color;
+  renderPalette();
+}
+
+function renderPalette() {
+  paletteSwatches.innerHTML = "";
+
+  for (const color of palette) {
+    const swatch = document.createElement("button");
+    swatch.className = "paletteSwatch";
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.classList.toggle("isActive", color === paintColor);
+    swatch.addEventListener("click", () => selectPaletteColor(color));
+    paletteSwatches.appendChild(swatch);
+  }
+}
+
 function selectTool(toolName) {
   activeTool = toolName;
   for (const button of toolButtons) {
@@ -909,6 +963,14 @@ addLayerButton.addEventListener("click", addLayer);
 addFrameButton.addEventListener("click", addFrame);
 playButton.addEventListener("click", togglePlayback);
 onionSkinButton.addEventListener("click", toggleOnionSkin);
+
+paletteImportButton.addEventListener("click", () => {
+  importPalette(paletteImportInput.value);
+});
+paletteImportInput.addEventListener("keydown", (event) => {
+  if (event.code === "Enter") importPalette(paletteImportInput.value);
+});
+
 fpsSlider.addEventListener("input", () => {
   fpsValue.textContent = fpsSlider.value;
   restartPlaybackIfPlaying();
@@ -986,4 +1048,5 @@ centerCanvasInView();
 resizeCanvasToWorkspace();
 selectTool("pencil");
 updateCursorStyle();
+renderPalette();
 pushHistorySnapshot();

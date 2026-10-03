@@ -315,3 +315,38 @@ body {
 .fpsRow input{
   width: 80px;
 }
+
+.paletteBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.paletteSwatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.paletteSwatch {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.paletteSwatch.isActive {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+#paletteImportInput {
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-button);
+  color: var(--text-bright);
+  font: inherit;
+}
