@@ -37,6 +37,8 @@ const fillShapesBox = document.getElementById("fillShapes");
 const paletteSwatches = document.getElementById("paletteSwatches");
 const paletteImportInput = document.getElementById("paletteImportInput");
 const paletteImportButton = document.getElementById("paletteImportButton");
+const paletteLockBox = document.getElementById("paletteLockBox");
+const paletteExtractInput = document.getElementById("paletteExtractInput");
 
 const addLayerButton = document.getElementById("addLayerButton");
 const layerList = document.getElementById("layerList");
@@ -490,8 +492,7 @@ function pickColorAt(pixel) {
 
     const color = layer.grid[pixel.y][pixel.x];
     if (color !== null) {
-      paintColor = color;
-      colorPicker.value = color;
+      setPaintColor(color);
       return;
     }
   }
@@ -582,9 +583,7 @@ async function importPalette(input) {
 }
 
 function selectPaletteColor(color) {
-  paintColor = color;
-  colorPicker.value = color;
-  renderPalette();
+  setPaintColor(color);
 }
 
 function renderPalette() {
@@ -599,6 +598,78 @@ function renderPalette() {
     swatch.addEventListener("click", () => selectPaletteColor(color));
     paletteSwatches.appendChild(swatch);
   }
+}
+
+function hexToRgb(hex) {
+  const value = hex.replace("#", "");
+  return {
+    r: parseInt(value.slice(0, 2), 16),
+    g: parseInt(value.slice(2, 4), 16),
+    b: parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function nearestPaletteColor(hex) {
+  const target = hexToRgb(hex);
+  let closestColor = palette[0];
+  let closestDistance = Infinity;
+
+  for (const color of palette) {
+    const candidate = hexToRgb(color);
+    const distance =
+      (candidate.r - target.r) ** 2 +
+      (candidate.g - target.g) ** 2 +
+      (candidate.b - target.b) ** 2;
+
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closestColor = color;
+    }
+  }
+
+  return closestColor;
+}
+
+function setPaintColor(color) {
+  paintColor = paletteLockBox.checked && palette.length > 0
+    ? nearestPaletteColor(color)
+    : color;
+  colorPicker.value = paintColor;
+  renderPalette();
+}
+
+function extractPaletteFromImage(file) {
+  const image = new Image();
+
+  image.onload = () => {
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = image.width;
+    sampleCanvas.height = image.height;
+
+    const sampleContext = sampleCanvas.getContext("2d");
+    sampleContext.drawImage(image, 0, 0);
+
+    const { data } = sampleContext.getImageData(0, 0, image.width, image.height);
+    const seenColors = new Set();
+
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+
+      const hex =
+        "#" +
+        [data[i], data[i + 1], data[i + 2]]
+          .map((channel) => channel.toString(16).padStart(2, "0"))
+          .join("");
+
+      seenColors.add(hex);
+      if (seenColors.size >= 32) break;
+    }
+
+    setPalette([...seenColors]);
+    URL.revokeObjectURL(image.src);
+  };
+
+  image.src = URL.createObjectURL(file);
 }
 
 function selectTool(toolName) {
@@ -956,7 +1027,7 @@ toolButtons.forEach((button) => {
 });
 
 colorPicker.addEventListener("input", () => {
-  paintColor = colorPicker.value;
+  setPaintColor(colorPicker.value);
 });
 
 addLayerButton.addEventListener("click", addLayer);
@@ -969,6 +1040,12 @@ paletteImportButton.addEventListener("click", () => {
 });
 paletteImportInput.addEventListener("keydown", (event) => {
   if (event.code === "Enter") importPalette(paletteImportInput.value);
+});
+
+paletteExtractInput.addEventListener("change", () => {
+  const file = paletteExtractInput.files[0];
+  if (file) extractPaletteFromImage(file);
+  paletteExtractInput.value = "";
 });
 
 fpsSlider.addEventListener("input", () => {

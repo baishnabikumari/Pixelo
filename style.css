@@ -350,3 +350,11 @@ body {
   color: var(--text-bright);
   font: inherit;
 }
+
+.paletteExtractLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+}

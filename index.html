@@ -27,6 +27,15 @@
         <div class="paletteSwatches" id="paletteSwatches"></div>
         <input type="text" id="paletteImportInput" placeholder="hex list or URL">
         <button class="toolButton" id="paletteImportButton">Import</button>
+
+        <label class="checkRow" title="Snap drawn colors to the palette">
+          <input type="checkbox" id="paletteLockBox"> Lock to palette
+        </label>
+
+        <label class="toolButton paletteExtractLabel">
+          Extract from image
+          <input type="file" id="paletteExtractInput" accept="image/*" hidden>
+        </label>
       </div>
 
       <div class="historyRow">
@@ -66,6 +75,7 @@
         <span id="fpsValue">8</span>
       </label>
     </div>
+
     <div class="frameList" id="frameList"></div>
     <button class="panelButton" id="addFrameButton" title="Add frame">+</button>
   </div>
