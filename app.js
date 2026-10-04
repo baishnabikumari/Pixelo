@@ -37,6 +37,8 @@ const zoomInfo = document.getElementById("zoomInfo");
 const toolButtons = document.querySelectorAll(".toolButton");
 const colorPicker = document.getElementById("colorPicker");
 const fillShapesBox = document.getElementById("fillShapes");
+const mirrorXBox = document.getElementById("mirrorXBox");
+const mirrorYBox = document.getElementById("mirrorYBox");
 const paletteSwatches = document.getElementById("paletteSwatches");
 const paletteImportInput = document.getElementById("paletteImportInput");
 const paletteImportButton = document.getElementById("paletteImportButton");
@@ -565,10 +567,22 @@ function getPointColor(point) {
   return drag.color;
 }
 
+function getMirroredPoints(point){
+  const mirroredX = CANVAS_WIDTH - 1 - point.x;
+  const mirroredY = CANVAS_HEIGHT - 1 - point.y;
+
+  const points = [point];
+  if(mirrorXBox.checked) points.push({ x: mirroredX, y: point.y });
+  if(mirrorYBox.checked) points.push({ x: point.x, y: mirroredY });
+  if(mirrorXBox.checked && mirrorYBox.checked) points.push({ x: mirroredX, y: mirroredY });
+  return points;
+}
 function redrawDrag() {
   restoreGrid(drag.layer.grid, drag.snapshot);
   for (const point of getDragPoints()) {
-    setPixel(drag.layer.grid, point.x, point.y, getPointColor(point));
+    for(const target of getMirroredPoints(point)){
+      setPixel(drag.layer.grid, point.x, point.y, getPointColor(point));
+    }
   }
 }
 
@@ -779,6 +793,27 @@ function drawGridLines(zoom) {
   context.stroke();
 }
 
+function drawSymmetryGuides(zoom){
+  if(!mirrorXBox.checked && !mirrorYBox.checked) return;
+  context.strokeStyle = 'rgba(255, 77, 109, 0.8)';
+  context.lineWidth = 1;
+  context.setLineDash([4, 4]);
+  context.beginPath();
+
+  if(mirrorXBox.checked){
+    const lineX = view.offsetX + (CANVAS_WIDTH / 2) * zoom + 0.5;
+    context.moveTo(lineX, view.offsetY);
+    context.lineTo(lineX, view.offsetY + CANVAS_HEIGHT * zoom);
+  }
+  if(mirrorYBox.checked){
+    const lineY = view.offsetY + (CANVAS_HEIGHT / 2) * zoom + 0.5;
+    context.moveTo(view.offsetX, lineY);
+    context.lineTo(view.offsetX + CANVAS_WIDTH * zoom, lineY);
+  }
+  context.stroke();
+  context.setLineDash([]);
+}
+
 function drawHoverOutline(zoom) {
   if (!hoveredPixel || isPanning) return;
   context.strokeStyle = "#ff4d6d";
@@ -811,6 +846,7 @@ function render() {
   drawOnionSkin(zoom);
   drawLayers(zoom);
   if (zoom >= GRID_MIN_ZOOM) drawGridLines(zoom);
+  drawSymmetryGuides(zoom);
   drawHoverOutline(zoom);
   updateStatusBar();
 
@@ -1192,6 +1228,13 @@ editorCanvas.addEventListener(
 toolButtons.forEach((button) => {
   button.addEventListener("click", () => selectTool(button.dataset.tool));
 });
+
+for(const mirrorBox of [mirrorXBox, mirrorYBox]){
+  mirrorBox.addEventListener("change", () => {
+    mirrorBox.blur();
+    render();
+  });
+}
 
 colorPicker.addEventListener("input", () => {
   setPaintColor(colorPicker.value);
