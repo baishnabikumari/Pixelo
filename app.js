@@ -22,6 +22,7 @@ const BRUSH_TOOLS = ["pencil", "eraser", "dither"];
 const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 
 const HISTORY_LIMIT = 50;
+const SPRITE_SHEET_NAME = "pixelo-spritesheet.png";
 
 const workspace = document.getElementById("workspace");
 const editorCanvas = document.getElementById("editorCanvas");
@@ -52,6 +53,8 @@ const redoButton = document.getElementById("redoButton");
 
 const exportPngButton = document.getElementById("exportPngButton");
 const importPngInput = document.getElementById("importPngInput");
+const exportSheetButton = document.getElementById("exportSheetButton");
+const exportJsonButton = document.getElementById("exportJsonButton");
 
 const view = {
   zoomIndex: ZOOM_LEVELS.indexOf(12),
@@ -852,31 +855,77 @@ function endPointerAction() {
   if (hadDrag) pushHistorySnapshot();
 }
 
-function exportPng() {
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = CANVAS_WIDTH;
-  exportCanvas.height = CANVAS_HEIGHT;
-  const exportContext = exportCanvas.getContext("2d");
-
-  for (const layer of layers) {
+function drawLayersToContext(targetContext, sourceLayers, offsetX = 0, scale = 1) {
+  for (const layer of sourceLayers) {
     if (!layer.isVisible || layer.opacity === 0) continue;
 
-    exportContext.globalAlpha = layer.opacity / 100;
+    targetContext.globalAlpha = layer.opacity / 100;
     for (let y = 0; y < CANVAS_HEIGHT; y++) {
       for (let x = 0; x < CANVAS_WIDTH; x++) {
         const color = layer.grid[y][x];
         if (color === null) continue;
-        exportContext.fillStyle = color;
-        exportContext.fillRect(x, y, 1, 1);
+        targetContext.fillStyle = color;
+        targetContext.fillRect(offsetX + x * scale, y * scale, scale, scale);
       }
     }
   }
-  exportContext.globalAlpha = 1;
+  targetContext.globalAlpha = 1;
+}
 
+function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.download = "pixelo-export.png";
-  link.href = exportCanvas.toDataURL("image/png");
+  link.download = filename;
+  link.href = url;
   link.click();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportPng() {
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = CANVAS_WIDTH;
+  exportCanvas.height = CANVAS_HEIGHT;
+
+  drawLayersToContext(exportCanvas.getContext("2d"), layers);
+  exportCanvas.toBlob((blob) => downloadBlob("pixelo-export.png", blob));
+}
+
+function exportSpriteSheet() {
+  captureActiveFrame();
+
+  const sheetCanvas = document.createElement("canvas");
+  sheetCanvas.width = CANVAS_WIDTH * frames.length;
+  sheetCanvas.height = CANVAS_HEIGHT;
+  const sheetContext = sheetCanvas.getContext("2d");
+
+  frames.forEach((frame, index) => {
+    drawLayersToContext(sheetContext, frame.layers, index * CANVAS_WIDTH);
+  });
+
+  sheetCanvas.toBlob((blob) => downloadBlob(SPRITE_SHEET_NAME, blob));
+}
+
+function exportSpriteJson() {
+  const fps = Number(fpsSlider.value);
+
+  const sheetData = {
+    image: SPRITE_SHEET_NAME,
+    frameWidth: CANVAS_WIDTH,
+    frameHeight: CANVAS_HEIGHT,
+    fps,
+    frameDurationMs: Math.round(1000 / fps),
+    frames: frames.map((frame, index) => ({
+      name: frame.name,
+      x: index * CANVAS_WIDTH,
+      y: 0,
+      width: CANVAS_WIDTH,
+      height: CANVAS_HEIGHT,
+    })),
+  };
+
+  const jsonBlob = new Blob([JSON.stringify(sheetData, null, 2)], { type: "application/json" });
+  downloadBlob("pixelo-spritesheet.json", jsonBlob);
 }
 
 function importPngFile(file) {
@@ -1155,6 +1204,8 @@ undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
 
 exportPngButton.addEventListener("click", exportPng);
+exportSheetButton.addEventListener("click", exportSpriteSheet);
+exportJsonButton.addEventListener("click", exportSpriteJson);
 
 importPngInput.addEventListener("change", () => {
   const file = importPngInput.files[0];

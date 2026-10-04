@@ -64,6 +64,11 @@ body {
   filter: brightness(1.25);
 }
 
+.iconButton.wide {
+  width: auto;
+  padding: 0 6px;
+}
+
 .iconButton.importLabel {
   display: flex;
   align-items: center;
