@@ -23,6 +23,7 @@ const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 
 const HISTORY_LIMIT = 50;
 const SPRITE_SHEET_NAME = "pixelo-spritesheet.png";
+const GIF_EXPORT_SCALE = 8;
 
 const workspace = document.getElementById("workspace");
 const editorCanvas = document.getElementById("editorCanvas");
@@ -55,6 +56,7 @@ const exportPngButton = document.getElementById("exportPngButton");
 const importPngInput = document.getElementById("importPngInput");
 const exportSheetButton = document.getElementById("exportSheetButton");
 const exportJsonButton = document.getElementById("exportJsonButton");
+const exportGifButton = document.getElementById("exportGifButton");
 
 const view = {
   zoomIndex: ZOOM_LEVELS.indexOf(12),
@@ -906,6 +908,29 @@ function exportSpriteSheet() {
   sheetCanvas.toBlob((blob) => downloadBlob(SPRITE_SHEET_NAME, blob));
 }
 
+function exportGif() {
+  captureActiveFrame();
+
+  const gifWidth = CANVAS_WIDTH * GIF_EXPORT_SCALE;
+  const gifHeight = CANVAS_HEIGHT * GIF_EXPORT_SCALE;
+
+  const frameCanvas = document.createElement("canvas");
+  frameCanvas.width = gifWidth;
+  frameCanvas.height = gifHeight;
+  const frameContext = frameCanvas.getContext("2d", { willReadFrequently: true });
+
+  const rgbaFrames = frames.map((frame) => {
+    frameContext.clearRect(0, 0, gifWidth, gifHeight);
+    drawLayersToContext(frameContext, frame.layers, 0, GIF_EXPORT_SCALE);
+    return frameContext.getImageData(0, 0, gifWidth, gifHeight).data;
+  });
+
+  const delay = Math.max(2, Math.round(100 / Number(fpsSlider.value)));
+
+  const gifBytes = encodeGif(rgbaFrames, gifWidth, gifHeight, delay);
+  downloadBlob("pixelo-animation.gif", new Blob([gifBytes], { type: "image/gif" }));
+}
+
 function exportSpriteJson() {
   const fps = Number(fpsSlider.value);
 
@@ -1206,6 +1231,7 @@ redoButton.addEventListener("click", redo);
 exportPngButton.addEventListener("click", exportPng);
 exportSheetButton.addEventListener("click", exportSpriteSheet);
 exportJsonButton.addEventListener("click", exportSpriteJson);
+exportGifButton.addEventListener("click", exportGif);
 
 importPngInput.addEventListener("change", () => {
   const file = importPngInput.files[0];
