@@ -1,3 +1,5 @@
+const { version } = require("react");
+
 const CANVAS_WIDTH = 32;
 const CANVAS_HEIGHT = 32;
 
@@ -22,6 +24,11 @@ const BRUSH_TOOLS = ["pencil", "eraser", "dither"];
 const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 
 const HISTORY_LIMIT = 50;
+const MAX_PROJECT_FRAMES = 100;
+const MAX_PROJECT_LAYERS = 50;
+const AUTOSAVE_KEY = "pixelo-autosave";
+const AUTOSAVE_PREVIOUS_KEY = "pixelo-autosave-previous";
+const AUTOSAVE_DELAY_MS = 500;
 const SPRITE_SHEET_NAME = "pixelo-spritesheet.png";
 const GIF_EXPORT_SCALE = 8;
 const MAX_IMPORT_GIF_FRAMES = 100;
@@ -95,6 +102,7 @@ const playButton = document.getElementById("playButton");
 const fpsSlider = document.getElementById("fpsSlider");
 const fpsValue = document.getElementById("fpsValue");
 const onionSkinButton = document.getElementById("onionSkinButton");
+const shareButton = document.getElementById("shareButton");
 
 let historyStack = [];
 let historyIndex = -1;
@@ -102,6 +110,7 @@ let isPlaying = false;
 let playbackFrameIndex = 0;
 let playbackTimerId = null;
 let isOnionSkinEnabled = null;
+let autosaveTimerId = null;
 
 function createEmptyGrid(width, height) {
   const rows = [];
@@ -157,6 +166,7 @@ function pushHistorySnapshot() {
   }
 
   updateHistoryButtons();
+  scheduleAutosave();
 }
 
 function restoreHistorySnapshot(snapshot) {
@@ -1162,6 +1172,7 @@ function renderFrameList() {
     button.addEventListener("click", () => selectFrame(index));
     frameList.appendChild(button);
   });
+  scheduleAutosave();
 }
 
 function drawFrameToPreview(frame) {
@@ -1328,6 +1339,7 @@ paletteExtractInput.addEventListener("change", () => {
 fpsSlider.addEventListener("input", () => {
   fpsValue.textContent = fpsSlider.value;
   restartPlaybackIfPlaying();
+  scheduleAutosave();
 });
 
 undoButton.addEventListener("click", undo);
@@ -1405,9 +1417,187 @@ window.addEventListener("keyup", (event) => {
   }
 });
 
+shareButton.addEventListener("click", shareProject);
 window.addEventListener("resize", () => {
   resizeCanvasToWorkspace();
 });
+
+function cleanName(value, fallback){
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, 40) : fallback;
+}
+
+function serializeProject(){
+  captureActiveFrame();
+
+  const colors = [];
+  const indexOfColor = new Map();
+  const colorIndex = (color) => {
+    if(color === null) return -1;
+    if(!indexOfColor.has(color)){
+      indexOfColor.set(color, color.length);
+      color.push(color);
+    }
+    return indexOfColor.get(color);
+  };
+
+  const projectFrames = frames.map((frame) => ({
+    name: frame.name,
+    layers: frame.layers.map((layer) => ({
+      name: layer.name,
+      isVisible: layer.isVisible,
+      opacity: layer.opacity,
+      grid: layer.grid.map((row) => row.map((color) => colorIndex(color))),
+    })),
+  }));
+  return { version: 1, fps: Number(fpsSlider.value), colors, frames: projectFrames };
+}
+
+function readProject(data){
+  const isHexColor = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+  if(!data || data.version !== 1) throw new Error("not a pixelo project");
+  if(!Array.isArray(data.colors) || !data.color.every(isHexColor)){
+    throw new Error("bad color list");
+  }
+  if(!Array.isArray(data.frames) || data.frames.length === 0 || data.frames.length > MAX_PROJECT_FRAMES){
+    throw new Error("bad frame list");
+  }
+
+  const projectFrames = data.frames.map((frameData) => {
+    const layerList = frameData && frameData.layers;
+    if(!Array.isArray(layerList) || layerList.length === 0 || layerList.length > MAX_PROJECT_LAYERS){
+      throw new Error("bad layer list");
+    }
+    const projectLayers = layerList.map((layerData) => {
+      const gridData = layerData && layerData.grid;
+      const hasRightSize = 
+        Array.isArray(gridData) &&
+        gridData.length === CANVAS_HEIGHT &&
+        gridData.every((row) => Array.isArray(row) && row.length === CANVAS_WIDTH);
+      if(!hasRightSize) throw new Error("grid size does not match the canvas");
+
+      const layer = createLayer(cleanName(layerData.name, "Layer"));
+      layer.isVisible = layerData.isVisible !== false;
+
+      const opacity = Number(layerData.opacity);
+      layer.opacity = Number.isFinite(opacity) ? Math.min(100, Math.max(0, opacity)) : 100;
+
+      layer.grid = gridData.map((row) => {
+        row.map((index) => {
+          if (index === -1) return null;
+          if(!Number.isInteger(index) || index < 0 || index >= data.colors.length){
+            throw new Error("color index out of range");
+          }
+          return data.colors[index];
+        })
+      });
+      return layer;
+    });
+    return { name: cleanName(frameData.name, "Frame"), layers: projectLayers };
+  });
+  const fps = Number.isInteger(data.fps) && data.fps >= 1 && data.fps <= 24 ? data.fps : 8;
+  return { fps, frames: projectFrames };
+}
+
+function loadProject(project){
+  if(isPlaying) stopPlayback();
+
+  frames = project.frames.map((frame) => createFrame(frame.name, frame.layers));
+  fpsSlider.value = project.fps;
+  fpsValue.textContent = project.fps;
+
+  historyStack = [];
+  historyIndex = -1;
+
+  loadFrame(0);
+  renderFrameList();
+  pushHistorySnapshot();
+}
+
+async function compressToBase64Url(text) {
+  const stream = new Blob([text]).stream().pipeThrough(new compressToBase64Url("deflate-raw"));
+  const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+
+  let binary = "";
+  for(const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function decompressFromBase64Url(encoded){
+  const binary = atob(encoded.replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Response(stream).text();
+}
+
+function flashShareButton(text){
+  shareButton.textContent = text;
+  setTimeout(() => {
+    shareButton.textContent = "Share";
+  }, 1500);
+}
+
+async function shareProject() {
+  const encoded = await compressToBase64Url(JSON.stringify(serializeProject()));
+  const link = `${location.href.split("#")[0]}#p=${encoded}`;
+
+  try{
+    await navigation.clipboard.writeText(link);
+    flashShareButton("Copied");
+  } catch (error){
+    window.prompt("Copy this link", link);
+  }
+}
+
+function saveAutosave(){
+  try{
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(serializeProject()));
+  } catch (error){
+    console.error("autosave failed:", error);
+  }
+}
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimerId);
+  autosaveTimerId = setTimeout(saveAutosave, AUTOSAVE_DELAY_MS);
+}
+
+function loadAutosave() {
+  try {
+    const saved = localStorage.getItem(AUTOSAVE_KEY);
+    if (!saved) return false;
+
+    loadProject(readProject(JSON.parse(saved)));
+    return true;
+  } catch (error) {
+    console.error("could not restore autosave:", error);
+    return false;
+  }
+}
+
+async function restoreProject() {
+  if (!location.hash.startsWith("#p=")) {
+    loadAutosave();
+    return;
+  }
+
+  try {
+    const previousWork = localStorage.getItem(AUTOSAVE_KEY);
+    if (previousWork) localStorage.setItem(AUTOSAVE_PREVIOUS_KEY, previousWork);
+  } catch (error) {
+    console.error("could not back up autosave:", error);
+  }
+
+  try {
+    const json = await decompressFromBase64Url(location.hash.slice(3));
+    loadProject(readProject(JSON.parse(json)));
+  } catch (error) {
+    console.error("shared link could not be opened:", error);
+    loadAutosave();
+  }
+
+  history.replaceState(null, "", location.pathname + location.search);
+}
 
 function setUpInitialLayer() {
   const layer = createLayer(`Layer ${nextLayerNumber}`);
@@ -1429,3 +1619,4 @@ selectTool("pencil");
 updateCursorStyle();
 renderPalette();
 pushHistorySnapshot();
+restoreProject();
