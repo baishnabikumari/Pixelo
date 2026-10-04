@@ -24,6 +24,7 @@ const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 const HISTORY_LIMIT = 50;
 const SPRITE_SHEET_NAME = "pixelo-spritesheet.png";
 const GIF_EXPORT_SCALE = 8;
+const MAX_IMPORT_GIF_FRAMES = 100;
 
 const workspace = document.getElementById("workspace");
 const editorCanvas = document.getElementById("editorCanvas");
@@ -59,6 +60,7 @@ const importPngInput = document.getElementById("importPngInput");
 const exportSheetButton = document.getElementById("exportSheetButton");
 const exportJsonButton = document.getElementById("exportJsonButton");
 const exportGifButton = document.getElementById("exportGifButton");
+const importGifInput = document.getElementById("importGifInput");
 
 const view = {
   zoomIndex: ZOOM_LEVELS.indexOf(12),
@@ -967,6 +969,66 @@ function exportGif() {
   downloadBlob("pixelo-animation.gif", new Blob([gifBytes], { type: "image/gif" }));
 }
 
+function rgbToHex(red, green, blue) {
+  return (
+    "#" +
+    [red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")
+  );
+}
+
+function gridFromRgba(rgba, sourceWidth, sourceHeight) {
+  const grid = createEmptyGrid(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  for (let y = 0; y < CANVAS_HEIGHT; y++) {
+    for (let x = 0; x < CANVAS_WIDTH; x++) {
+      const sourceX = Math.floor((x * sourceWidth) / CANVAS_WIDTH);
+      const sourceY = Math.floor((y * sourceHeight) / CANVAS_HEIGHT);
+      const i = (sourceY * sourceWidth + sourceX) * 4;
+
+      if (rgba[i + 3] < 128) continue;
+      grid[y][x] = rgbToHex(rgba[i], rgba[i + 1], rgba[i + 2]);
+    }
+  }
+  return grid;
+}
+
+function setFpsFromGifDelays(gifFrames) {
+  const delays = gifFrames.map((gifFrame) =>
+    gifFrame.delayCentiseconds <= 1 ? 10 : gifFrame.delayCentiseconds
+  );
+  const averageDelay = delays.reduce((sum, delay) => sum + delay, 0) / delays.length;
+  const fps = Math.min(24, Math.max(1, Math.round(100 / averageDelay)));
+
+  fpsSlider.value = fps;
+  fpsValue.textContent = fps;
+  restartPlaybackIfPlaying();
+}
+
+async function importGifFile(file) {
+  let decoded;
+  try {
+    decoded = decodeGif(new Uint8Array(await file.arrayBuffer()));
+  } catch (error) {
+    console.error("gif import failed:", error);
+    return;
+  }
+  if (decoded.frames.length === 0) return;
+
+  captureActiveFrame();
+
+  const gifFrames = decoded.frames.slice(0, MAX_IMPORT_GIF_FRAMES);
+  const importedFrames = gifFrames.map((gifFrame, index) => {
+    const layer = createLayer("Imported");
+    layer.grid = gridFromRgba(gifFrame.rgba, decoded.width, decoded.height);
+    return createFrame(`GIF ${index + 1}`, [layer]);
+  });
+
+  frames.splice(activeFrameIndex + 1, 0, ...importedFrames);
+  loadFrame(activeFrameIndex + 1);
+  renderFrameList();
+  setFpsFromGifDelays(gifFrames);
+}
+
 function exportSpriteJson() {
   const fps = Number(fpsSlider.value);
 
@@ -1275,6 +1337,12 @@ exportPngButton.addEventListener("click", exportPng);
 exportSheetButton.addEventListener("click", exportSpriteSheet);
 exportJsonButton.addEventListener("click", exportSpriteJson);
 exportGifButton.addEventListener("click", exportGif);
+
+importGifInput.addEventListener("change", () => {
+  const file = importGifInput.files[0];
+  if (file) importGifFile(file);
+  importGifInput.value = "";
+});
 
 importPngInput.addEventListener("change", () => {
   const file = importPngInput.files[0];
