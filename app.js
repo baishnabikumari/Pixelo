@@ -50,6 +50,9 @@ const opacityValue = document.getElementById("opacityValue");
 const undoButton = document.getElementById("undoButton");
 const redoButton = document.getElementById("redoButton");
 
+const exportPngButton = document.getElementById("exportPngButton");
+const importPngInput = document.getElementById("importPngInput");
+
 const view = {
   zoomIndex: ZOOM_LEVELS.indexOf(12),
   offsetX: 0,
@@ -125,6 +128,7 @@ function createFrame(name, layersForFrame) {
     layers: cloneLayers(layersForFrame),
   };
 }
+
 function captureActiveFrame() {
   frames[activeFrameIndex].layers = cloneLayers(layers);
 }
@@ -848,6 +852,78 @@ function endPointerAction() {
   if (hadDrag) pushHistorySnapshot();
 }
 
+function exportPng() {
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = CANVAS_WIDTH;
+  exportCanvas.height = CANVAS_HEIGHT;
+  const exportContext = exportCanvas.getContext("2d");
+
+  for (const layer of layers) {
+    if (!layer.isVisible || layer.opacity === 0) continue;
+
+    exportContext.globalAlpha = layer.opacity / 100;
+    for (let y = 0; y < CANVAS_HEIGHT; y++) {
+      for (let x = 0; x < CANVAS_WIDTH; x++) {
+        const color = layer.grid[y][x];
+        if (color === null) continue;
+        exportContext.fillStyle = color;
+        exportContext.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+  exportContext.globalAlpha = 1;
+
+  const link = document.createElement("a");
+  link.download = "pixelo-export.png";
+  link.href = exportCanvas.toDataURL("image/png");
+  link.click();
+}
+
+function importPngFile(file) {
+  const image = new Image();
+
+  image.onload = () => {
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = CANVAS_WIDTH;
+    sampleCanvas.height = CANVAS_HEIGHT;
+
+    const sampleContext = sampleCanvas.getContext("2d");
+    sampleContext.drawImage(image, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    const { data } = sampleContext.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    const grid = createEmptyGrid(CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    for (let y = 0; y < CANVAS_HEIGHT; y++) {
+      for (let x = 0; x < CANVAS_WIDTH; x++) {
+        const i = (y * CANVAS_WIDTH + x) * 4;
+        const alpha = data[i + 3];
+        if (alpha === 0) continue;
+
+        grid[y][x] =
+          "#" +
+          [data[i], data[i + 1], data[i + 2]]
+            .map((channel) => channel.toString(16).padStart(2, "0"))
+            .join("");
+      }
+    }
+
+    const layer = createLayer("Imported image");
+    layer.grid = grid;
+
+    const activeIndex = layers.findIndex((existing) => existing.id === activeLayerId);
+    layers.splice(activeIndex + 1, 0, layer);
+    activeLayerId = layer.id;
+
+    renderLayerList();
+    render();
+    pushHistorySnapshot();
+
+    URL.revokeObjectURL(image.src);
+  };
+
+  image.src = URL.createObjectURL(file);
+}
+
 function loadFrame(index) {
   activeFrameIndex = index;
   layers = cloneLayers(frames[index].layers);
@@ -909,6 +985,7 @@ function renderFrameList() {
       event.stopPropagation();
       deleteFrame(index);
     });
+
     button.append(nameField, deleteButton);
     button.addEventListener("click", () => selectFrame(index));
     frameList.appendChild(button);
@@ -931,8 +1008,10 @@ function drawFrameToPreview(frame) {
       }
     }
   }
+
   previewContext.globalAlpha = 1;
 }
+
 function stopPlayback() {
   isPlaying = false;
   playButton.textContent = "▶";
@@ -948,7 +1027,9 @@ function startPlayback() {
   isPlaying = true;
   playButton.textContent = "⏸";
   playbackFrameIndex = activeFrameIndex;
+
   const fps = Number(fpsSlider.value);
+
   playbackTimerId = setInterval(() => {
     playbackFrameIndex = (playbackFrameIndex + 1) % frames.length;
     drawFrameToPreview(frames[playbackFrameIndex]);
@@ -969,6 +1050,7 @@ function restartPlaybackIfPlaying() {
 editorCanvas.addEventListener("pointerdown", (event) => {
   const isMiddleButton = event.button === 1;
   const isSpaceDrag = event.button === 0 && isSpaceHeld;
+
   if (isMiddleButton || isSpaceDrag) {
     event.preventDefault();
     startPanning(event);
@@ -984,6 +1066,7 @@ editorCanvas.addEventListener("pointerdown", (event) => {
     pickColorAt(pixel);
     return;
   }
+
   if (activeTool === "fill") {
     floodFill(getActiveLayer().grid, pixel, paintColor);
     render();
@@ -1052,6 +1135,7 @@ onionSkinButton.addEventListener("click", toggleOnionSkin);
 paletteImportButton.addEventListener("click", () => {
   importPalette(paletteImportInput.value);
 });
+
 paletteImportInput.addEventListener("keydown", (event) => {
   if (event.code === "Enter") importPalette(paletteImportInput.value);
 });
@@ -1069,6 +1153,15 @@ fpsSlider.addEventListener("input", () => {
 
 undoButton.addEventListener("click", undo);
 redoButton.addEventListener("click", redo);
+
+exportPngButton.addEventListener("click", exportPng);
+
+importPngInput.addEventListener("change", () => {
+  const file = importPngInput.files[0];
+  if (file) importPngFile(file);
+  importPngInput.value = "";
+});
+
 opacitySlider.addEventListener("input", () => {
   setActiveLayerOpacity(Number(opacitySlider.value));
 });
@@ -1080,6 +1173,7 @@ opacitySlider.addEventListener("change", () => {
 document.addEventListener("click", (event) => {
   if (event.target.matches("button")) event.target.blur();
 });
+
 colorPicker.addEventListener("change", () => colorPicker.blur());
 opacitySlider.addEventListener("change", () => opacitySlider.blur());
 
@@ -1091,21 +1185,25 @@ window.addEventListener("keydown", (event) => {
     isSpaceHeld = true;
     updateCursorStyle();
   }
+
   if (event.code === "Digit0") {
     centerCanvasInView();
     render();
   }
 
   const shortcutTool = TOOL_SHORTCUTS[event.code];
+
   if (shortcutTool && !event.ctrlKey && !event.metaKey) {
     selectTool(shortcutTool);
   }
 
   const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+
   if (isCtrlOrCmd && event.code === "KeyZ" && !event.shiftKey) {
     event.preventDefault();
     undo();
   }
+
   if (isCtrlOrCmd && (event.code === "KeyY" || (event.code === "KeyZ" && event.shiftKey))) {
     event.preventDefault();
     redo();
@@ -1131,8 +1229,10 @@ function setUpInitialLayer() {
 }
 
 setUpInitialLayer();
+
 frames = [createFrame("Frame 1", layers)];
 activeFrameIndex = 0;
+
 renderLayerList();
 renderFrameList();
 centerCanvasInView();

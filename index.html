@@ -7,6 +7,17 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <header class="appHeader">
+    <span class="appTitle">Pixelo</span>
+    <div class="headerButtons">
+      <button class="iconButton" id="exportPngButton" title="Export PNG">⬇</button>
+      <label class="iconButton importLabel" title="Import PNG">
+        ⬆
+        <input type="file" id="importPngInput" accept="image/*" hidden>
+      </label>
+    </div>
+  </header>
+
   <div class="editorArea">
     <aside class="toolbar">
       <button class="toolButton" data-tool="pencil" title="Pencil (B)">Pencil</button>
