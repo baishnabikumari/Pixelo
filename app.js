@@ -1,5 +1,3 @@
-const { version } = require("react");
-
 const CANVAS_WIDTH = 32;
 const CANVAS_HEIGHT = 32;
 
