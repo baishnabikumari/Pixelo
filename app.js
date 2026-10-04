@@ -15,9 +15,10 @@ const TOOL_SHORTCUTS = {
   KeyL: "line",
   KeyR: "rectangle",
   KeyO: "ellipse",
+  KeyD: "dither",
 };
 
-const BRUSH_TOOLS = ["pencil", "eraser"];
+const BRUSH_TOOLS = ["pencil", "eraser", "dither"];
 const SHAPE_TOOLS = ["line", "rectangle", "ellipse"];
 
 const HISTORY_LIMIT = 50;
@@ -39,6 +40,7 @@ const paletteImportInput = document.getElementById("paletteImportInput");
 const paletteImportButton = document.getElementById("paletteImportButton");
 const paletteLockBox = document.getElementById("paletteLockBox");
 const paletteExtractInput = document.getElementById("paletteExtractInput");
+const ditherColorPicker = document.getElementById("ditherColorPicker");
 
 const addLayerButton = document.getElementById("addLayerButton");
 const layerList = document.getElementById("layerList");
@@ -59,6 +61,7 @@ let paintColor = colorPicker.value;
 let drag = null;
 
 let palette = ["#3a86ff", "#ff006e", "#ffbe0b", "#8338ec", "#06d6a0", "#ffffff", "#8b8b9a", "#000000"];
+let ditherColor = ditherColorPicker.value;
 
 let hoveredPixel = null;
 let isPanning = false;
@@ -546,10 +549,17 @@ function getDragPoints() {
   return getEllipsePoints(startPixel, endPixel, fillShapesBox.checked);
 }
 
+function getPointColor(point) {
+  if (drag.tool === "dither") {
+    return (point.x + point.y) % 2 === 0 ? drag.color : ditherColor;
+  }
+  return drag.color;
+}
+
 function redrawDrag() {
   restoreGrid(drag.layer.grid, drag.snapshot);
   for (const point of getDragPoints()) {
-    setPixel(drag.layer.grid, point.x, point.y, drag.color);
+    setPixel(drag.layer.grid, point.x, point.y, getPointColor(point));
   }
 }
 
@@ -1028,6 +1038,10 @@ toolButtons.forEach((button) => {
 
 colorPicker.addEventListener("input", () => {
   setPaintColor(colorPicker.value);
+});
+
+ditherColorPicker.addEventListener("input", () => {
+  ditherColor = ditherColorPicker.value;
 });
 
 addLayerButton.addEventListener("click", addLayer);
