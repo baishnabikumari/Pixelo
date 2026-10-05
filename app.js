@@ -40,7 +40,7 @@ const cursorInfo = document.getElementById("cursorInfo");
 const sizeInfo = document.getElementById("sizeInfo");
 const zoomInfo = document.getElementById("zoomInfo");
 
-const toolButtons = document.querySelectorAll(".toolButton");
+const toolButtons = document.querySelectorAll(".toolButton[data-tool]");
 const colorPicker = document.getElementById("colorPicker");
 const fillShapesBox = document.getElementById("fillShapes");
 const mirrorXBox = document.getElementById("mirrorXBox");
@@ -107,7 +107,7 @@ let historyIndex = -1;
 let isPlaying = false;
 let playbackFrameIndex = 0;
 let playbackTimerId = null;
-let isOnionSkinEnabled = null;
+let isOnionSkinEnabled = false;
 let autosaveTimerId = null;
 
 function createEmptyGrid(width, height) {
@@ -591,7 +591,7 @@ function redrawDrag() {
   restoreGrid(drag.layer.grid, drag.snapshot);
   for (const point of getDragPoints()) {
     for(const target of getMirroredPoints(point)){
-      setPixel(drag.layer.grid, point.x, point.y, getPointColor(point));
+      setPixel(drag.layer.grid, target.x, target.y, getPointColor(target));
     }
   }
 }
@@ -1376,10 +1376,11 @@ colorPicker.addEventListener("change", () => colorPicker.blur());
 opacitySlider.addEventListener("change", () => opacitySlider.blur());
 
 window.addEventListener("keydown", (event) => {
-  if (event.target.matches("input")) return;
+  if (event.target.matches("input[type='text'], textarea")) return;
 
   if (event.code === "Space") {
     event.preventDefault();
+    event.target.blur();
     isSpaceHeld = true;
     updateCursorStyle();
   }
@@ -1408,6 +1409,11 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+window.addEventListener("blur", () => {
+  isSpaceHeld = false;
+  updateCursorStyle();
+})
+
 window.addEventListener("keyup", (event) => {
   if (event.code === "Space") {
     isSpaceHeld = false;
@@ -1416,6 +1422,7 @@ window.addEventListener("keyup", (event) => {
 });
 
 shareButton.addEventListener("click", shareProject);
+window.addEventListener("pagehide", saveAutosave);
 window.addEventListener("resize", () => {
   resizeCanvasToWorkspace();
 });
@@ -1432,8 +1439,8 @@ function serializeProject(){
   const colorIndex = (color) => {
     if(color === null) return -1;
     if(!indexOfColor.has(color)){
-      indexOfColor.set(color, color.length);
-      color.push(color);
+      indexOfColor.set(color, colors.length);
+      colors.push(color);
     }
     return indexOfColor.get(color);
   };
@@ -1453,7 +1460,7 @@ function serializeProject(){
 function readProject(data){
   const isHexColor = (value) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
   if(!data || data.version !== 1) throw new Error("not a pixelo project");
-  if(!Array.isArray(data.colors) || !data.color.every(isHexColor)){
+  if(!Array.isArray(data.colors) || !data.colors.every(isHexColor)){
     throw new Error("bad color list");
   }
   if(!Array.isArray(data.frames) || data.frames.length === 0 || data.frames.length > MAX_PROJECT_FRAMES){
@@ -1479,7 +1486,7 @@ function readProject(data){
       const opacity = Number(layerData.opacity);
       layer.opacity = Number.isFinite(opacity) ? Math.min(100, Math.max(0, opacity)) : 100;
 
-      layer.grid = gridData.map((row) => {
+      layer.grid = gridData.map((row) =>
         row.map((index) => {
           if (index === -1) return null;
           if(!Number.isInteger(index) || index < 0 || index >= data.colors.length){
@@ -1487,7 +1494,7 @@ function readProject(data){
           }
           return data.colors[index];
         })
-      });
+      );
       return layer;
     });
     return { name: cleanName(frameData.name, "Frame"), layers: projectLayers };
@@ -1512,7 +1519,7 @@ function loadProject(project){
 }
 
 async function compressToBase64Url(text) {
-  const stream = new Blob([text]).stream().pipeThrough(new compressToBase64Url("deflate-raw"));
+  const stream = new Blob([text]).stream().pipeThrough(new compressionStream("deflate-raw"));
   const bytes = new Uint8Array(await new Response(stream).arrayBuffer());
 
   let binary = "";
@@ -1540,7 +1547,7 @@ async function shareProject() {
   const link = `${location.href.split("#")[0]}#p=${encoded}`;
 
   try{
-    await navigation.clipboard.writeText(link);
+    await navigator.clipboard.writeText(link);
     flashShareButton("Copied");
   } catch (error){
     window.prompt("Copy this link", link);

@@ -85,9 +85,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  width: 84px;
+  width: 100px;
   padding: 8px;
   background: var(--bg-panel);
+  overflow-y: auto;
 }
 
 .toolButton {
@@ -134,7 +135,8 @@ body {
   filter: none;
 }
 
-#colorPicker {
+#colorPicker,
+#ditherColorPicker {
   width: 100%;
   height: 32px;
   padding: 0;
